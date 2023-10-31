@@ -1,0 +1,17 @@
+[package]
+name = "packet_proc"
+version = "0.1.0"
+edition = "2021"
+authors = ["Darek Stojaczyk <darek@stojaczyk.pl>"]
+license = "MIT"
+description = """
+Procedural macro to simplify defining packet structures
+"""
+
+[lib]
+proc-macro = true
+
+[dependencies]
+bincode = "2.0.0-rc.3"
+quote = "1.0"
+syn = { version = "2.0" }

@@ -1,0 +1,14 @@
+[package]
+name = "packet"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+packet_proc = { version = "0.1.0", path = "../packet_proc" }
+anyhow = "1.0"
+bincode = "2.0.0-rc.3"
+static_assertions = "1.1"
+genmatch = { version = "0.2.0", path = "../genmatch" }
+thiserror = "1.0"
+paste = "1.0"
