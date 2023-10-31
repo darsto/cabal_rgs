@@ -1,0 +1,20 @@
+[package]
+name = "event_mgr"
+version = "0.1.0"
+edition = "2021"
+exclude = ["/.*"]
+
+[profile.release]
+lto = true
+strip = true
+
+[dependencies]
+packet = { path = "../packet" }
+anyhow = "1.0"
+clap = { version = "4.4", features = ["derive"] }
+num_enum = "0.7"
+smol = "1.3"
+syn = { version = "2.0", features = ["derive", "extra-traits"] }
+thiserror = "1.0"
+futures = "0.3"
+bincode = "2.0.0-rc.3"
