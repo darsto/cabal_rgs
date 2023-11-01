@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
+// Rust-analyzer complains at the assert_def_packet_size! definition
+#![allow(clippy::items_after_test_module)]
+
 use anyhow::Result;
 use bincode::{
     config,
@@ -11,8 +14,11 @@ use genmatch::*;
 use thiserror::Error;
 
 pub mod common;
-//mod crypto_mgr;
+pub mod crypto_mgr;
 pub mod event_mgr;
+
+mod helper_types;
+pub use helper_types::*;
 
 #[genmatch]
 #[derive(Debug)]
@@ -170,10 +176,12 @@ impl From<DecodeError> for PayloadDecodeError {
 macro_rules! assert_def_packet_size {
     ($pkt:ident, $size:expr) => {
         paste::paste! {
+            #[allow(unused_imports)]
+            use super::*;
             #[cfg(test)]
-            #[allow(non_snake_case)]
+            #[allow(non_snake_case, clippy::items_after_test_module)]
             mod [<$pkt _test_def_packet_size>] {
-                use super:: $pkt;
+                use super::*;
                 #[test]
                 fn test() {
                     let mut buf = [0u8; 4096];
