@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use event_mgr::packet_stream::PacketStream;
-use event_mgr::{Args, Listener};
 use packet::Payload;
+use server::packet_stream::PacketStream;
 
 use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -62,7 +62,10 @@ async fn start_client_test() {
     };
 
     assert_eq!(ack.unk1, 0x0);
-    assert_eq!(ack.unk2, [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00]);
+    assert_eq!(
+        ack.unk2,
+        [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00]
+    );
     assert_eq!(ack.world_id, world_id);
     assert_eq!(ack.channel_id, channel_id);
     assert_eq!(ack.unk3, 0x0);
@@ -84,9 +87,9 @@ async fn start_client_test() {
 async fn start_server() -> Result<()> {
     let tcp_listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 38171)) //
         .expect("Cannot bind to 38171");
-    let args = Args::default();
+    let args = Arc::new(server::args::Args::default());
 
-    let mut listener = Listener::new(tcp_listener, args);
+    let mut listener = server::event_mgr::Listener::new(tcp_listener, args);
     listener.listen().await
 }
 

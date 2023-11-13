@@ -191,8 +191,42 @@ pub enum NumRounds {
 
 pub struct Key([u32; 8]);
 
+pub type Block = [u8; 16];
+
+#[allow(non_snake_case)]
+pub mod BlockUtil {
+    use super::*;
+
+    pub fn from_bytes<const N: usize>(bytes: &[u8]) -> [Block; N] {
+        let mut vec = bytes.to_vec();
+        vec.resize(N * 16, 0u8);
+        let blocks = vec.as_slice().as_slice_of::<Block>().unwrap();
+        blocks.try_into().unwrap()
+    }
+
+    pub fn from_str<const N: usize>(str: &str) -> [Block; N] {
+        from_bytes(str.as_bytes())
+    }
+
+    pub fn one_from_bytes(bytes: &[u8]) -> Block {
+        from_bytes::<1>(bytes)[0]
+    }
+
+    pub fn one_from_str(str: &str) -> Block {
+        from_str::<1>(str)[0]
+    }
+
+    pub fn as_bytes(blocks: &[Block]) -> &[u8] {
+        blocks.as_byte_slice()
+    }
+
+    pub fn try_as_utf8_string(blocks: &[Block]) -> Result<&str, std::str::Utf8Error>  {
+        std::str::from_utf8(as_bytes(blocks))
+    }
+}
+
 impl Key {
-    pub fn expand(self, num_rounds: NumRounds) -> ExpandedKey {
+    pub fn expand(&self, num_rounds: NumRounds) -> ExpandedKey {
         let mut expkey = match &num_rounds {
             NumRounds::R16 => ExpandedKey::R16([0u32; 0x44]),
             NumRounds::R14 => ExpandedKey::R14([0u32; 0x3c]),
@@ -278,6 +312,10 @@ impl Key {
 
         expkey
     }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.0.as_byte_slice()
+    }
 }
 
 impl From<[u8; 32]> for Key {
@@ -289,7 +327,7 @@ impl From<[u8; 32]> for Key {
     }
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Clone, Debug)]
 pub enum ExpandedKey {
     R16([u32; 0x44]),
     R14([u32; 0x3c]),
@@ -321,19 +359,22 @@ impl ExpandedKey {
         }
     }
 
-    pub fn encrypt_one_u32(&self, data: &[u32; 4]) -> [u32; 4] {
-        crypt_block(data, self)
-    }
-
-    pub fn encrypt_one(&self, data: &[u8; 16]) -> [u8; 16] {
+    pub fn encrypt_one(&self, data: &Block) -> Block {
         let data: &[u32] = data.as_slice_of().unwrap();
         let data: &[u32; 4] = data.try_into().unwrap();
-        let encrypted = self.encrypt_one_u32(data);
+        let encrypted = crypt_block(data, self);
         encrypted.as_byte_slice().try_into().unwrap()
     }
 
-    pub fn encrypt<const N: usize>(&self, data: &[&[u8; 16]; N]) -> [[u8; 16]; N] {
-        data.map(|c| self.encrypt_one(c))
+    pub fn encrypt<const N: usize>(&self, data: &[Block; N]) -> [Block; N] {
+        data.map(|c| self.encrypt_one(&c))
+    }
+
+    pub fn mut_encrypt(&self, data: &mut [Block]) {
+        data.iter_mut().for_each(|c| {
+            let tmp = self.encrypt_one(c);
+            c.copy_from_slice(&tmp)
+        });
     }
 }
 
@@ -343,19 +384,22 @@ pub struct DecryptKey {
 }
 
 impl DecryptKey {
-    pub fn decrypt_one_u32(&self, data: &[u32; 4]) -> [u32; 4] {
-        crypt_block(data, &self.expkey)
-    }
-
-    pub fn decrypt_one(&self, data: &[u8; 16]) -> [u8; 16] {
+    pub fn decrypt_one(&self, data: &Block) -> Block {
         let data: &[u32] = data.as_slice_of().unwrap();
         let data: &[u32; 4] = data.try_into().unwrap();
-        let encrypted = self.decrypt_one_u32(data);
+        let encrypted = crypt_block(data, &self.expkey);
         encrypted.as_byte_slice().try_into().unwrap()
     }
 
-    pub fn decrypt<const N: usize>(&self, data: &[&[u8; 16]; N]) -> [[u8; 16]; N] {
-        data.map(|c| self.decrypt_one(c))
+    pub fn decrypt<const N: usize>(&self, data: &[Block; N]) -> [Block; N] {
+        data.map(|c| self.decrypt_one(&c))
+    }
+
+    pub fn mut_decrypt(&self, data: &mut [Block]) {
+        data.iter_mut().for_each(|c| {
+            let tmp = self.decrypt_one(c);
+            c.copy_from_slice(&tmp)
+        });
     }
 }
 
@@ -529,23 +573,22 @@ mod tests {
             0x00000000, 0x00000000, 0x00000000, 0x00000000,
         ]);
 
-        let raw: [u8; 16] = [
+        let raw: Block = [
                     0x44,	0x61,	0x74,	0x61,	0x2f,	0x49,	0x74,	0x65,
                     0x6d,	0x2e,	0x73,	0x63,	0x70,	0x00,   0x00,   0x00,
         ];
         println!("raw: {raw:x?} ({})", std::str::from_utf8(&raw).unwrap());
 
-        let raw_u32: [u32; 4] = raw.as_slice_of().unwrap().try_into().unwrap();
         let expkey = key.expand(NumRounds::R16);
-
         println!("expkey: {expkey:x?}");
-        let encoded = expkey.encrypt_one_u32(&raw_u32);
+
+        let encoded = expkey.encrypt_one(&raw);
         println!("encoded: {:x?}", encoded.as_byte_slice());
 
         let deckey = DecryptKey::from(expkey);
         println!("deckey: {:x?}", deckey);
 
-        let decoded = deckey.decrypt_one_u32(&encoded);
+        let decoded = deckey.decrypt_one(&encoded);
         println!("decoded: {:x?} ({})", decoded.as_byte_slice(), std::str::from_utf8(decoded.as_byte_slice()).unwrap());
 
         assert_eq!(decoded.as_byte_slice(), raw.as_byte_slice());
@@ -560,7 +603,7 @@ mod tests {
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
         ]);
 
-        let raw: [u8; 16] = [
+        let raw: Block = [
                     0x44,	0x61,	0x74,	0x61,	0x2f,	0x49,	0x74,	0x65,
                     0x6d,	0x2e,	0x73,	0x63,	0x70,	0x00,   0x00,   0x00,
         ];

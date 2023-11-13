@@ -1,30 +1,25 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-pub mod packet_stream;
-
+use crate::packet_stream::PacketStream;
 use packet::*;
-use packet_stream::PacketStream;
 
-use std::net::{TcpListener, TcpStream};
 use std::os::fd::AsRawFd;
+use std::{net::TcpListener, sync::Arc};
 
 use anyhow::{bail, Result};
-use clap::Parser;
-use smol::io::{AsyncReadExt, AsyncWriteExt};
 use smol::Async;
 
-#[derive(Parser, Debug, Default)]
-#[command(author, version, about, long_about = None)]
+#[derive(clap::Args, Debug, Default)]
 pub struct Args {}
 
 pub struct Listener {
     tcp_listener: Async<TcpListener>,
-    _args: Args,
+    _args: Arc<crate::args::Args>,
 }
 
 impl Listener {
-    pub fn new(tcp_listener: Async<TcpListener>, args: Args) -> Self {
+    pub fn new(tcp_listener: Async<TcpListener>, args: Arc<crate::args::Args>) -> Self {
         Self {
             tcp_listener,
             _args: args,

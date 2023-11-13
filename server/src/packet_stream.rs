@@ -28,7 +28,10 @@ impl PacketStream {
         let payload_len = hdr.len as u64 - Header::SIZE as u64;
 
         self.buf.clear();
-        (&self.stream).take(payload_len).read_to_end(&mut self.buf).await?;
+        (&self.stream)
+            .take(payload_len)
+            .read_to_end(&mut self.buf)
+            .await?;
         Ok(Payload::decode(&hdr, &self.buf)?)
     }
 

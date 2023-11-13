@@ -27,8 +27,16 @@ pub enum Payload {
     Unknown(common::Unknown),
     Connect(common::Connect),
     ConnectAck(common::ConnectAck),
+
     /* Event Manager packets */
     Keepalive(event_mgr::Keepalive),
+
+    /* Crypto Manager packets */
+    EncryptKey2Request(crypto_mgr::EncryptKey2Request),
+    EncryptKey2Response(crypto_mgr::EncryptKey2Response),
+    KeyAuthRequest(crypto_mgr::KeyAuthRequest),
+    KeyAuthResponse(crypto_mgr::KeyAuthResponse),
+    ESYM(crypto_mgr::ESYM),
 }
 
 #[derive(Debug, PartialEq, Encode, Decode)]
