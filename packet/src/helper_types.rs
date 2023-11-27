@@ -14,6 +14,69 @@ use bincode::{
     BorrowDecode, Decode, Encode,
 };
 
+pub use aria::BlockSlice;
+
+/// Encode-able wrapper for Block
+#[repr(C, align(16))]
+#[derive(Debug, Default, PartialEq, Eq, Clone)]
+pub struct Block([u8; 16]);
+impl aria::BlockExt for Block {}
+
+impl AsRef<[u8; 16]> for Block {
+    fn as_ref(&self) -> &[u8; 16] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8; 16]> for Block {
+    fn as_mut(&mut self) -> &mut [u8; 16] {
+        &mut self.0
+    }
+}
+
+impl From<[u8; 16]> for Block {
+    fn from(value: [u8; 16]) -> Self {
+        Self(value)
+    }
+}
+
+impl Deref for Block {
+    type Target = [u8; 16];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Block {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Encode for Block {
+    fn encode<E: bincode::enc::Encoder>(
+        &self,
+        encoder: &mut E,
+    ) -> std::result::Result<(), EncodeError> {
+        self.0.encode(encoder)
+    }
+}
+
+impl Decode for Block {
+    fn decode<D: bincode::de::Decoder>(decoder: &mut D) -> std::result::Result<Self, DecodeError> {
+        let mut bytes = [0u8; 16];
+        decoder.reader().read(&mut bytes)?;
+        Ok(Block(bytes))
+    }
+}
+
+impl<'a> BorrowDecode<'a> for Block {
+    fn borrow_decode<D: BorrowDecoder<'a>>(_: &mut D) -> Result<Self, DecodeError> {
+        unimplemented!();
+    }
+}
+
 /// Vec that doesn't encode its length.
 /// When decoding, all source bytes will be consumed.
 #[derive(Debug, Default, PartialEq)]
@@ -49,7 +112,8 @@ where
 {
     fn decode<D: bincode::de::Decoder>(decoder: &mut D) -> std::result::Result<Self, DecodeError> {
         const FULL_PACKET_SIZE: usize = 65536 + 1;
-        let len = match decoder.claim_bytes_read(FULL_PACKET_SIZE) {
+        let mut unused_buf = [0u8; FULL_PACKET_SIZE];
+        let len = match decoder.reader().read(&mut unused_buf) {
             Err(DecodeError::UnexpectedEnd { additional }) => {
                 debug_assert!(additional <= FULL_PACKET_SIZE);
                 FULL_PACKET_SIZE - additional
@@ -161,5 +225,15 @@ impl Deref for NulltermString {
 impl DerefMut for NulltermString {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn block_size() {
+        assert_eq!(std::mem::size_of::<Block>(), 16);
     }
 }

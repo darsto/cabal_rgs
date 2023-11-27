@@ -2,7 +2,7 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use crate::packet_stream::PacketStream;
-use crypto::aesc::BlockUtil;
+use aria::BlockExt;
 use packet::*;
 
 use rand::Rng;
@@ -58,7 +58,7 @@ impl Listener {
     }
 }
 
-fn block_arr_xor(blocks: &mut [crypto::aesc::Block]) {
+fn xor_blocks_mut(blocks: &mut [Block]) {
     blocks
         .iter_mut()
         .for_each(|c| c.iter_mut().for_each(|b| *b ^= 0xb3));
@@ -67,7 +67,7 @@ fn block_arr_xor(blocks: &mut [crypto::aesc::Block]) {
 pub struct Connection {
     pub id: i32,
     pub stream: PacketStream,
-    pub keys: HashMap<u32, crypto::aesc::Key>,
+    pub keys: HashMap<u32, aria::Key>,
 }
 
 impl Connection {
@@ -84,8 +84,10 @@ impl Connection {
                 } else {
                     rng.gen_range(b'A'..=b'Z')
                 };
+                keybuf[i] = b'a';
             });
-            crypto::aesc::Key::from(keybuf)
+            println!("key={keybuf:x?}");
+            aria::Key::from(keybuf)
         });
 
         let shortkey = &key.as_bytes()[0..9];
@@ -106,29 +108,41 @@ impl Connection {
             .keys
             .get(&req.key_id)
             .with_context(|| format!("Unknown key {}", req.key_id))?;
-        let deckey: crypto::aesc::DecryptKey = key.expand(crypto::aesc::NumRounds::R16).into();
+        let enckey = key.expand();
+        let deckey: aria::DecryptKey = enckey.clone().into();
 
-        block_arr_xor(core::slice::from_mut(&mut req.ip_origin));
-        let ip_origin = deckey.decrypt_one(&req.ip_origin);
+        xor_blocks_mut(core::slice::from_mut(&mut req.ip_origin));
+        deckey.decrypt_mut(&mut req.ip_origin);
+        let ip_origin = &req.ip_origin;
 
-        block_arr_xor(core::slice::from_mut(&mut req.ip_local));
-        let ip_local = deckey.decrypt_one(&req.ip_local);
+        xor_blocks_mut(core::slice::from_mut(&mut req.ip_local));
+        deckey.decrypt_mut(&mut req.ip_local);
+        let ip_local = &req.ip_local;
 
-        block_arr_xor(&mut req.srchash);
-        let srchash = deckey.decrypt(&req.srchash);
+        xor_blocks_mut(&mut req.srchash);
+        req.srchash.iter_mut().for_each(|b| deckey.decrypt_mut(b));
+        let srchash = req.srchash;
 
-        block_arr_xor(&mut req.binbuf);
-        let binbuf = deckey.decrypt(&req.binbuf);
+        xor_blocks_mut(&mut req.binbuf);
+        req.binbuf.iter_mut().for_each(|b| deckey.decrypt_mut(b));
+        let binbuf = req.binbuf;
 
-        println!("ip_origin={ip_origin:#x?}, ip_local={ip_local:#x?}, srchash={srchash:#x?}, binbuf={binbuf:#x?}");
+        let ip_origin = ip_origin.try_as_str().unwrap();
+        let ip_local = ip_local.try_as_str().unwrap();
+        let srchash = srchash.try_as_str().unwrap();
+        let binbuf = binbuf.try_as_str().unwrap();
+        println!("ip_origin={ip_origin}, ip_local={ip_local}, srchash={srchash}, binbuf={binbuf}");
 
-        let ip_local = BlockUtil::one_from_str("127.0.0.1");
-        let mut enc_item: [crypto::aesc::Block; 16] = BlockUtil::from_str("Data/Item.scp");
-        block_arr_xor(&mut enc_item);
-        let mut enc_mobs: [crypto::aesc::Block; 16] = BlockUtil::from_str("Data/Mobs.scp");
-        block_arr_xor(&mut enc_mobs);
-        let mut enc_warp: [crypto::aesc::Block; 16] = BlockUtil::from_str("Data/Warp.scp");
-        block_arr_xor(&mut enc_warp);
+        let ip_local = Block::new("127.0.0.1");
+        let mut enc_item: [Block; 16] = Block::arr_from_slice("Data/Item.scp");
+        enc_item.iter_mut().for_each(|b| enckey.encrypt_mut(b));
+        xor_blocks_mut(&mut enc_item);
+        let mut enc_mobs: [Block; 16] = Block::arr_from_slice("Data/Mobs.scp");
+        enc_mobs.iter_mut().for_each(|b| enckey.encrypt_mut(b));
+        xor_blocks_mut(&mut enc_mobs);
+        let mut enc_warp: [Block; 16] = Block::arr_from_slice("Data/Warp.scp");
+        enc_warp.iter_mut().for_each(|b| enckey.encrypt_mut(b));
+        xor_blocks_mut(&mut enc_warp);
 
         let r = Payload::KeyAuthResponse(crypto_mgr::KeyAuthResponse {
             unk1: 0x1,

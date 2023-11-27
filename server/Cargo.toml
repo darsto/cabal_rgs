@@ -4,13 +4,9 @@ version = "0.1.0"
 edition = "2021"
 exclude = ["/.*"]
 
-[profile.release]
-lto = true
-strip = true
-
 [dependencies]
 packet = { path = "../packet" }
-crypto = { path = "../crypto" }
+aria = { path = "../aria" }
 anyhow = "1.0"
 clap = { version = "4.4", features = ["derive"] }
 num_enum = "0.7"

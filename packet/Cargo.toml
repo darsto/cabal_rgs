@@ -6,7 +6,7 @@ edition = "2021"
 
 [dependencies]
 packet_proc = { version = "0.1.0", path = "../packet_proc" }
-crypto = { version = "0.1.0", path = "../crypto" }
+aria = { version = "0.1.0", path = "../aria" }
 anyhow = "1.0"
 bincode = "2.0.0-rc.3"
 static_assertions = "1.1"

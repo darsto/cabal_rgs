@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use crypto::aesc::BlockUtil;
-use packet::Payload;
+use aria::{BlockExt, BlockSlice};
+use packet::{Block, Payload};
 use server::packet_stream::PacketStream;
 
 use std::net::{TcpListener, TcpStream};
@@ -38,6 +38,22 @@ async fn connect_timeout() -> std::io::Result<Async<TcpStream>> {
 
         Timer::after(Duration::from_millis(75)).await;
     }
+}
+
+fn xor_blocks_mut(blocks: &mut [Block]) {
+    blocks
+        .iter_mut()
+        .for_each(|c| c.iter_mut().for_each(|b| *b ^= 0xb3));
+}
+
+fn xor_blocks<const N: usize>(mut blocks: [Block; N]) -> [Block; N] {
+    xor_blocks_mut(&mut blocks);
+    blocks
+}
+
+fn xor_block(mut block: Block) -> Block {
+    block.iter_mut().for_each(|b| *b ^= 0xb3);
+    block
 }
 
 async fn start_client_test() {
@@ -86,26 +102,26 @@ async fn start_client_test() {
     assert_eq!(resp.shortkey.len(), 9);
 
     resp.shortkey.iter_mut().for_each(|b| *b ^= 0xb3);
+    resp.shortkey.resize(32, 0x0);
 
-    let mut keybuf = Vec::from(resp.shortkey.0);
-    keybuf.resize(32, 0x0);
-    let keybuf: [u8; 32] = (&keybuf[0..32]).try_into().unwrap();
-    let key = crypto::aesc::Key::from(keybuf);
-    let enckey = key.expand(crypto::aesc::NumRounds::R16);
-    let deckey = crypto::aesc::DecryptKey::from(enckey.clone());
+    let keybuf: [u8; 32] = (&resp.shortkey[0..32]).try_into().unwrap();
+    let key = aria::Key::from(keybuf);
+    let enckey = key.expand();
+    let deckey = aria::DecryptKey::from(enckey.clone());
 
-    let req = Payload::KeyAuthRequest(packet::crypto_mgr::KeyAuthRequest {
+    let req = packet::crypto_mgr::KeyAuthRequest {
         unk1: 0x0,
         unk2: 0x0,
-        ip_origin: enckey.encrypt_one(&BlockUtil::one_from_str("255.255.255.127")),
-        ip_local: enckey.encrypt_one(&BlockUtil::one_from_str("127.0.0.1")),
-        srchash: enckey.encrypt(&BlockUtil::from_str::<4>(
-            "f2b76e1ee8a92a8ce99a41c07926d3f3",
-        )),
-        binbuf: enckey.encrypt(&BlockUtil::from_str::<4>("empty")),
+        ip_origin: xor_block(enckey.encrypt(Block::new("255.255.255.127"))),
+        ip_local: xor_block(enckey.encrypt(Block::new("127.0.0.1"))),
+        srchash: xor_blocks(
+            Block::arr_from_slice::<_, 4>("f2b76e1ee8a92a8ce99a41c07926d3f3")
+                .map(|b| enckey.encrypt(b)),
+        ),
+        binbuf: xor_blocks(Block::arr_from_slice::<_, 4>("empty").map(|b| enckey.encrypt(b))),
         key_id: resp.key_id,
-    });
-    conn.send(&req).await.unwrap();
+    };
+    conn.send(&Payload::KeyAuthRequest(req)).await.unwrap();
 
     let p = conn.recv().await.unwrap();
     let Payload::KeyAuthResponse(mut resp) = p else {
@@ -113,34 +129,24 @@ async fn start_client_test() {
     };
 
     assert_eq!(resp.unk1, 0x1);
-    assert_eq!(resp.xor_unk2, 0x03010101);
     resp.xor_unk2 ^= 0x1f398ab3;
-    deckey.mut_decrypt(core::slice::from_mut(&mut resp.ip_local));
-    assert_eq!(
-        BlockUtil::try_as_utf8_string(core::slice::from_ref(&resp.ip_local)),
-        Ok("127.0.0.1")
-    );
+    assert_eq!(resp.xor_unk2, 0x03010101);
+    assert_eq!(resp.ip_local.try_as_str(), Ok("127.0.0.1"));
     resp.xor_unk3 ^= 0xb3;
     assert_eq!(resp.xor_unk3, 0x4);
-    deckey.mut_decrypt(&mut resp.enc_item);
-    assert_eq!(
-        BlockUtil::try_as_utf8_string(&resp.enc_item),
-        Ok("Data/Item.scp")
-    );
+    xor_blocks_mut(&mut resp.enc_item);
+    resp.enc_item.iter_mut().for_each(|b| deckey.decrypt_mut(b));
+    assert_eq!(resp.enc_item.try_as_str(), Ok("Data/Item.scp"));
     resp.xor_unk4 ^= 0xb3;
     assert_eq!(resp.xor_unk4, 0x2);
-    deckey.mut_decrypt(&mut resp.enc_mobs);
-    assert_eq!(
-        BlockUtil::try_as_utf8_string(&resp.enc_item),
-        Ok("Data/Mobs.scp")
-    );
+    xor_blocks_mut(&mut resp.enc_mobs);
+    resp.enc_mobs.iter_mut().for_each(|b| deckey.decrypt_mut(b));
+    assert_eq!(resp.enc_mobs.try_as_str(), Ok("Data/Mobs.scp"));
     resp.xor_unk5 ^= 0xb3;
     assert_eq!(resp.xor_unk5, 0x1);
-    deckey.mut_decrypt(&mut resp.enc_warp);
-    assert_eq!(
-        BlockUtil::try_as_utf8_string(&resp.enc_item),
-        Ok("Data/Warp.scp")
-    );
+    xor_blocks_mut(&mut resp.enc_warp);
+    resp.enc_warp.iter_mut().for_each(|b| deckey.decrypt_mut(b));
+    assert_eq!(resp.enc_warp.try_as_str(), Ok("Data/Warp.scp"));
 
     assert_eq!(resp.port, 38180);
 
