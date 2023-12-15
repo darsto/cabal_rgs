@@ -21,7 +21,8 @@ pub fn packet(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let id = parse_int(attr.to_string().as_str()).expect("Missing ID attribute. E.g.: #[packet(0x42)]");
+    let id =
+        parse_int(attr.to_string().as_str()).expect("Missing ID attribute. E.g.: #[packet(0x42)]");
 
     let ast = syn::parse_macro_input!(input as syn::DeriveInput);
     let packet_vis = ast.vis;
