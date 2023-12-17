@@ -16,13 +16,15 @@ assert_def_packet_size!(Connect, 4);
 #[packet(0x6)]
 pub struct ConnectAck {
     unk1: u32,     // 0x0?
-    unk2: [u8; 9], // hardcoded to [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00]
+    unk2: [u8; 8], // hardcoded to [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00]
     world_id: u8,
     channel_id: u8,
     unk3: u32, // hardcoded to 0x0
     unk4: u8,  // hardcoded to 0x1
 }
-assert_def_packet_size!(ConnectAck, 20);
+assert_def_packet_size!(ConnectAck, 19);
 
 #[packet(0x0)]
-pub struct Unknown {}
+pub struct Unknown {
+    bytes: UnboundVec<u8>,
+}

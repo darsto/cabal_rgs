@@ -129,22 +129,15 @@ impl Payload {
         Ok(len as usize)
     }
 
-    pub fn decode(hdr: &Header, data: &[u8]) -> Result<Self, PayloadDecodeError> {
+    pub fn decode(hdr: &Header, data: &[u8]) -> Result<Self, DecodeError> {
         let payload = Self::decode_raw(data, hdr.id as usize)?;
-        if let Self::Unknown(..) = payload {
-            return Err(PayloadDecodeError::UnknownPacket {
-                id: hdr.id,
-                len: hdr.len,
-            });
-        }
-
         Ok(payload)
     }
 }
 
 impl Default for Payload {
     fn default() -> Self {
-        Payload::Unknown(common::Unknown {})
+        Payload::Unknown(common::Unknown::default())
     }
 }
 
@@ -163,20 +156,6 @@ pub enum PayloadEncodeError {
 impl From<EncodeError> for PayloadEncodeError {
     fn from(value: EncodeError) -> Self {
         PayloadEncodeError::EncodeError(value)
-    }
-}
-
-#[derive(Error, Debug)]
-pub enum PayloadDecodeError {
-    #[error("Non-recognized packet ID {id:#04x}, length = {len:#04x}")]
-    UnknownPacket { id: u16, len: u16 },
-    #[error("Decoding failed ({0})")]
-    DecodeError(DecodeError),
-}
-
-impl From<DecodeError> for PayloadDecodeError {
-    fn from(value: DecodeError) -> Self {
-        PayloadDecodeError::DecodeError(value)
     }
 }
 

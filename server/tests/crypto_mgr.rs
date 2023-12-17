@@ -2,10 +2,11 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use aria::{BlockExt, BlockSlice};
-use packet::{Block, Payload};
+use packet::{Block, Payload, UnboundVec};
 use server::packet_stream::PacketStream;
 
 use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -17,7 +18,7 @@ macro_rules! log {
         print!("C: ");
         println!($s);
     };
-    ($s:literal, $($arg:tt)*) => {
+    ($s:literal, $($arg:tt),*) => {
         print!("C: ");
         println!($s, ($arg)*);
     };
@@ -78,7 +79,7 @@ async fn start_client_test() {
     assert_eq!(ack.unk1, 0x0);
     assert_eq!(
         ack.unk2,
-        [0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0xf6]
+        [0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00]
     );
     assert_eq!(ack.world_id, 0xf6);
     assert_eq!(ack.channel_id, 0xf6);
@@ -119,7 +120,7 @@ async fn start_client_test() {
                 .map(|b| enckey.encrypt(b)),
         ),
         binbuf: xor_blocks(Block::arr_from_slice::<_, 4>("empty").map(|b| enckey.encrypt(b))),
-        key_id: resp.key_id,
+        xor_port: 38180,
     };
     conn.send(&Payload::KeyAuthRequest(req)).await.unwrap();
 
@@ -150,13 +151,41 @@ async fn start_client_test() {
 
     assert_eq!(resp.port, 38180);
 
+    let req = packet::crypto_mgr::ESYMRequest {
+        unk1: 0x0,
+        nation: "BRA".into(),
+        srchash: "f2b76e1ee8a92a8ce99a41c07926d3f3".into(),
+    };
+    let mut data = UnboundVec(vec![]);
+    bincode::encode_into_std_write(req, &mut *data, bincode::config::legacy()).unwrap();
+    let r = Payload::ESYM(packet::crypto_mgr::ESYM { data });
+    conn.send(&r).await.unwrap();
+
+    let p = conn.recv().await.unwrap();
+    let Payload::ESYM(resp) = p else {
+        panic!("Expected KeyAuthResponse packet, got {p:?}");
+    };
+
+    let (req, len) = bincode::decode_from_slice::<packet::crypto_mgr::ESYMResponse, _>(
+        resp.data.0.as_slice(),
+        bincode::config::legacy(),
+    )
+    .unwrap();
+    if len != resp.data.0.len() {
+        panic!("Trailing data in ESYM packet {:#?}", resp);
+    }
+
+    println!("ESYM resp length: {}", req.filesize);
     log!("All sent!");
 }
 
 async fn start_server() -> Result<()> {
     let tcp_listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 32001)) //
         .expect("Cannot bind to 32001");
-    let args = Arc::new(server::args::Args::default());
+    let args = Arc::new(server::args::Config {
+        resources_dir: PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()),
+        ..Default::default()
+    });
 
     let mut listener = server::crypto_mgr::Listener::new(tcp_listener, args);
     listener.listen().await

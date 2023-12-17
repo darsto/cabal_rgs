@@ -64,7 +64,7 @@ async fn start_client_test() {
     assert_eq!(ack.unk1, 0x0);
     assert_eq!(
         ack.unk2,
-        [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00]
+        [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00]
     );
     assert_eq!(ack.world_id, world_id);
     assert_eq!(ack.channel_id, channel_id);
@@ -87,7 +87,7 @@ async fn start_client_test() {
 async fn start_server() -> Result<()> {
     let tcp_listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 38171)) //
         .expect("Cannot bind to 38171");
-    let args = Arc::new(server::args::Args::default());
+    let args = Arc::new(server::args::Config::default());
 
     let mut listener = server::event_mgr::Listener::new(tcp_listener, args);
     listener.listen().await

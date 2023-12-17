@@ -10,17 +10,13 @@ use smol::Async;
 use std::{net::TcpListener, sync::Arc};
 
 fn main() {
-    let args = Arc::new(server::args::Args::parse());
+    let args = Arc::new(server::args::Config::parse());
 
-    let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 38171)) //
-        .expect("Cannot bind to 38171");
-    let mut event_mgr_listener = server::event_mgr::Listener::new(sock, args.clone());
-
-    let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 38171)) //
-        .expect("Cannot bind to 38171");
+    let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 32001)) //
+        .expect("Cannot bind to 32001");
     let mut crypto_mgr_listener = server::crypto_mgr::Listener::new(sock, args.clone());
 
     smol::block_on(async move {
-        try_join!(event_mgr_listener.listen(), crypto_mgr_listener.listen()).unwrap();
+        try_join!(crypto_mgr_listener.listen()).unwrap();
     });
 }

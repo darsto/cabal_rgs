@@ -6,27 +6,23 @@ use aria::BlockExt;
 use packet::*;
 
 use rand::Rng;
-use std::collections::HashMap;
 use std::os::fd::AsRawFd;
 use std::{net::TcpListener, sync::Arc};
 
 use anyhow::{bail, Context, Result};
 use smol::Async;
 
-#[derive(clap::Args, Debug, Default)]
+#[derive(clap::Parser, Debug, Default)]
 pub struct Args {}
 
 pub struct Listener {
     tcp_listener: Async<TcpListener>,
-    _args: Arc<crate::args::Args>,
+    args: Arc<crate::args::Config>,
 }
 
 impl Listener {
-    pub fn new(tcp_listener: Async<TcpListener>, args: Arc<crate::args::Args>) -> Self {
-        Self {
-            tcp_listener,
-            _args: args,
-        }
+    pub fn new(tcp_listener: Async<TcpListener>, args: Arc<crate::args::Config>) -> Self {
+        Self { tcp_listener, args }
     }
 
     pub async fn listen(&mut self) -> Result<()> {
@@ -38,7 +34,8 @@ impl Listener {
             let conn = Connection {
                 id: stream.as_raw_fd(),
                 stream: PacketStream::new(stream),
-                keys: HashMap::new(),
+                shortkey: None,
+                args: self.args.clone(),
             };
 
             // Give the connection handler its own background task
@@ -67,15 +64,17 @@ fn xor_blocks_mut(blocks: &mut [Block]) {
 pub struct Connection {
     pub id: i32,
     pub stream: PacketStream,
-    pub keys: HashMap<u32, aria::Key>,
+    pub shortkey: Option<aria::Key>,
+    pub args: Arc<crate::args::Config>,
 }
 
 impl Connection {
     pub async fn handle_key_req(&mut self, mut req: crypto_mgr::EncryptKey2Request) -> Result<()> {
-        req.key_xid ^= 0x1f398ab3;
-        println!("key req key_id = {}", req.key_xid);
+        println!("key req key_split_point (w/o xor) = {:#x}", req.key_split_point);
+        req.key_split_point ^= 0x1f398ab3;
+        println!("key req key_split_point = {:#x}", req.key_split_point);
 
-        let key = self.keys.entry(req.key_xid).or_insert_with(|| {
+        let key = self.shortkey.get_or_insert_with(|| {
             let mut rng = rand::thread_rng();
             let mut keybuf = [0u8; 32];
             (0..8).for_each(|i| {
@@ -92,22 +91,20 @@ impl Connection {
 
         let shortkey = &key.as_bytes()[0..9];
         let r = Payload::EncryptKey2Response(crypto_mgr::EncryptKey2Response {
-            key_id: req.key_xid,
+            key_split_point: req.key_split_point,
             shortkey: UnboundVec(shortkey.iter().map(|b| b ^ 0xb3).collect()),
         });
         self.stream.send(&r).await
     }
 
     pub async fn handle_auth_req(&mut self, mut req: crypto_mgr::KeyAuthRequest) -> Result<()> {
-        println!("auth req key_id = {}", req.key_id);
+        req.xor_port ^= 0x1f398ab3;
+        println!("auth req xor_port = {:x}", req.xor_port);
 
         assert_eq!(req.unk1, 0x0);
         assert_eq!(req.unk2, 0x0);
 
-        let key = self
-            .keys
-            .get(&req.key_id)
-            .with_context(|| format!("Unknown key {}", req.key_id))?;
+        let key = self.shortkey.as_ref().context("shortkey not initialized")?;
         let enckey = key.expand();
         let deckey: aria::DecryptKey = enckey.clone().into();
 
@@ -173,10 +170,19 @@ impl Connection {
             req.nation.0, req.srchash.0
         );
 
+        let path = self.args
+            .resources_dir
+            .join("resources/esym")
+            .join(req.srchash.0)
+            .with_extension("esym");
+        let data = std::fs::read(&path).with_context(|| {
+            format!("cannot read {path:?}")
+        })?;
+
         let r = crypto_mgr::ESYMResponse {
             unk1: 0x1,
-            filesize: 0x0,
-            esym: UnboundVec(vec![]), // TODO!
+            filesize: data.len() as u32,
+            esym: UnboundVec(data),
         };
 
         let mut data = UnboundVec(vec![]);
@@ -199,7 +205,7 @@ impl Connection {
 
         let ack = Payload::ConnectAck(common::ConnectAck {
             unk1: 0x0,
-            unk2: [0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00, 0xf6],
+            unk2: [0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00],
             world_id: 0xf6,
             channel_id: 0xf6,
             unk3: 0x398ab300,

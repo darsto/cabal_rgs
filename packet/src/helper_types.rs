@@ -204,13 +204,25 @@ impl Decode for NulltermString {
             inner: e.utf8_error(),
         })?;
 
-        Ok(NulltermString(str))
+        Ok(Self(str))
     }
 }
 
 impl<'a> BorrowDecode<'a> for NulltermString {
     fn borrow_decode<D: BorrowDecoder<'a>>(_decoder: &mut D) -> Result<Self, DecodeError> {
         unimplemented!();
+    }
+}
+
+impl From<String> for NulltermString {
+    fn from(value: String) -> Self {
+        Self(value)
+    }
+}
+
+impl From<&str> for NulltermString {
+    fn from(value: &str) -> Self {
+        Self(value.to_owned())
     }
 }
 

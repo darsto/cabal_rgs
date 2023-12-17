@@ -10,16 +10,16 @@ use std::{net::TcpListener, sync::Arc};
 use anyhow::{bail, Result};
 use smol::Async;
 
-#[derive(clap::Args, Debug, Default)]
+#[derive(clap::Parser, Debug, Default)]
 pub struct Args {}
 
 pub struct Listener {
     tcp_listener: Async<TcpListener>,
-    _args: Arc<crate::args::Args>,
+    _args: Arc<crate::args::Config>,
 }
 
 impl Listener {
-    pub fn new(tcp_listener: Async<TcpListener>, args: Arc<crate::args::Args>) -> Self {
+    pub fn new(tcp_listener: Async<TcpListener>, args: Arc<crate::args::Config>) -> Self {
         Self {
             tcp_listener,
             _args: args,
@@ -74,7 +74,7 @@ impl Connection {
 
         let ack = Payload::ConnectAck(common::ConnectAck {
             unk1: 0x0,
-            unk2: [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00],
+            unk2: [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00],
             world_id,
             channel_id,
             unk3: 0x0,
