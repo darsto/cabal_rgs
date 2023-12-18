@@ -179,3 +179,58 @@ macro_rules! assert_def_packet_size {
         }
     };
 }
+
+#[macro_export]
+macro_rules! packet_alias {
+    ($into:ident, $($from:ident)::+) => {
+        impl TryFrom<$($from)::+> for $into {
+            type Error = anyhow::Error;
+
+            fn try_from(value: $($from)::+) -> std::result::Result<Self, Self::Error> {
+                let (req, len) = bincode::decode_from_slice::<$into, _>(
+                    value.bytes.0.as_slice(),
+                    bincode::config::legacy(),
+                )?;
+                if len != value.bytes.0.len() {
+                    return Err(anyhow::anyhow!("Trailing data in packet {:#?}", value));
+                }
+                Ok(req)
+            }
+        }
+
+        impl TryFrom<& $($from)::+> for $into {
+            type Error = anyhow::Error;
+
+            fn try_from(value: & $($from)::+) -> std::result::Result<Self, Self::Error> {
+                let (req, len) = bincode::decode_from_slice::<$into, _>(
+                    value.bytes.0.as_slice(),
+                    bincode::config::legacy(),
+                )?;
+                if len != value.bytes.0.len() {
+                    return Err(anyhow::anyhow!("Trailing data in packet {:#?}", value));
+                }
+                Ok(req)
+            }
+        }
+
+        impl TryInto<$($from)::+> for $into {
+            type Error = anyhow::Error;
+
+            fn try_into(self) -> std::result::Result<$($from)::+, Self::Error> {
+                let mut bytes = UnboundVec(vec![]);
+                bincode::encode_into_std_write(self, &mut bytes.0, bincode::config::legacy())?;
+                Ok($($from)::+ { bytes })
+            }
+        }
+
+        impl TryInto<$($from)::+> for & $into {
+            type Error = anyhow::Error;
+
+            fn try_into(self) -> std::result::Result<$($from)::+, Self::Error> {
+                let mut bytes = UnboundVec(vec![]);
+                bincode::encode_into_std_write(self, &mut bytes.0, bincode::config::legacy())?;
+                Ok($($from)::+ { bytes })
+            }
+        }
+    };
+}

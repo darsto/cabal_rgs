@@ -45,14 +45,15 @@ async fn start_client_test() {
     let world_id = 1;
     let channel_id = 1;
 
-    let hello = Payload::Connect(packet::common::Connect {
+    let hello = packet::event_mgr::Connect {
         unk1: 0x0,
         world_id,
         channel_id,
         unk2: 0x0,
-    });
-    conn.send(&hello).await.unwrap();
-
+    };
+    conn.send(&Payload::Connect(hello.try_into().unwrap()))
+        .await
+        .unwrap();
     log!("Sent Hello!");
     log!("Waiting for Ack ...");
 
@@ -60,23 +61,21 @@ async fn start_client_test() {
     let Payload::ConnectAck(ack) = &p else {
         panic!("Expected ConnectAck packet, got {p:?}");
     };
-
+    let ack = packet::event_mgr::ConnectAck::try_from(ack).unwrap();
     assert_eq!(ack.unk1, 0x0);
     assert_eq!(
         ack.unk2,
-        [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00]
+        [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00]
     );
     assert_eq!(ack.world_id, world_id);
     assert_eq!(ack.channel_id, channel_id);
     assert_eq!(ack.unk3, 0x0);
     assert_eq!(ack.unk4, 0x1);
-
     log!("Ack received!");
     log!("Sending Keepalive!");
 
     let keepalive = Payload::Keepalive(packet::event_mgr::Keepalive {});
     conn.send(&keepalive).await.unwrap();
-
     log!("All sent!");
 
     // make sure the connection wasn't terminated

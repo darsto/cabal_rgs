@@ -70,7 +70,10 @@ pub struct Connection {
 
 impl Connection {
     pub async fn handle_key_req(&mut self, mut req: crypto_mgr::EncryptKey2Request) -> Result<()> {
-        println!("key req key_split_point (w/o xor) = {:#x}", req.key_split_point);
+        println!(
+            "key req key_split_point (w/o xor) = {:#x}",
+            req.key_split_point
+        );
         req.key_split_point ^= 0x1f398ab3;
         println!("key req key_split_point = {:#x}", req.key_split_point);
 
@@ -83,7 +86,6 @@ impl Connection {
                 } else {
                     rng.gen_range(b'A'..=b'Z')
                 };
-                keybuf[i] = b'a';
             });
             println!("key={keybuf:x?}");
             aria::Key::from(keybuf)
@@ -124,10 +126,10 @@ impl Connection {
         req.binbuf.iter_mut().for_each(|b| deckey.decrypt_mut(b));
         let binbuf = req.binbuf;
 
-        let ip_origin = ip_origin.try_as_str().unwrap();
-        let ip_local = ip_local.try_as_str().unwrap();
-        let srchash = srchash.try_as_str().unwrap();
-        let binbuf = binbuf.try_as_str().unwrap();
+        let ip_origin = ip_origin.try_as_str()?;
+        let ip_local = ip_local.try_as_str()?;
+        let srchash = srchash.try_as_str()?;
+        let binbuf = binbuf.try_as_str()?;
         println!("ip_origin={ip_origin}, ip_local={ip_local}, srchash={srchash}, binbuf={binbuf}");
 
         let ip_local = Block::new("127.0.0.1");
@@ -158,10 +160,10 @@ impl Connection {
 
     pub async fn handle_esym(&mut self, esym: crypto_mgr::ESYM) -> Result<()> {
         let (req, len) = bincode::decode_from_slice::<crypto_mgr::ESYMRequest, _>(
-            esym.data.0.as_slice(),
+            esym.bytes.0.as_slice(),
             bincode::config::legacy(),
         )?;
-        if len != esym.data.0.len() {
+        if len != esym.bytes.0.len() {
             bail!("Trailing data in ESYM packet {:#?}", esym);
         }
 
@@ -170,14 +172,13 @@ impl Connection {
             req.nation.0, req.srchash.0
         );
 
-        let path = self.args
+        let path = self
+            .args
             .resources_dir
             .join("resources/esym")
             .join(req.srchash.0)
             .with_extension("esym");
-        let data = std::fs::read(&path).with_context(|| {
-            format!("cannot read {path:?}")
-        })?;
+        let data = std::fs::read(&path).with_context(|| format!("cannot read {path:?}"))?;
 
         let r = crypto_mgr::ESYMResponse {
             unk1: 0x1,
@@ -185,9 +186,9 @@ impl Connection {
             esym: UnboundVec(data),
         };
 
-        let mut data = UnboundVec(vec![]);
-        bincode::encode_into_std_write(r, &mut data.0, bincode::config::legacy())?;
-        let r = Payload::ESYM(crypto_mgr::ESYM { data });
+        let mut bytes = UnboundVec(vec![]);
+        bincode::encode_into_std_write(r, &mut bytes.0, bincode::config::legacy())?;
+        let r = Payload::ESYM(crypto_mgr::ESYM { bytes });
         self.stream.send(&r).await
     }
 
@@ -196,6 +197,7 @@ impl Connection {
         let Payload::Connect(hello) = &p else {
             bail!("Expected Connect packet, got {p:?}");
         };
+        let hello = packet::crypto_mgr::Connect::try_from(hello)?;
 
         assert_eq!(hello.unk1, 0xf6);
         assert_eq!(hello.world_id, 0xfd);
@@ -203,15 +205,17 @@ impl Connection {
         println!("Got hello: {p:?}");
         println!("Sending Ack ...");
 
-        let ack = Payload::ConnectAck(common::ConnectAck {
+        let ack = packet::crypto_mgr::ConnectAck {
             unk1: 0x0,
             unk2: [0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00],
-            world_id: 0xf6,
-            channel_id: 0xf6,
-            unk3: 0x398ab300,
-            unk4: 0x1f,
-        });
-        self.stream.send(&ack).await?;
+            unk3: 0xf6,
+            unk4: 0xf6,
+            unk5: 0x398ab300,
+            unk6: 0x1f,
+        };
+        self.stream
+            .send(&Payload::ConnectAck(ack.try_into()?))
+            .await?;
 
         loop {
             let p = self.stream.recv().await?;

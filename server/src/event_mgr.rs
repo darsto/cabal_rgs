@@ -65,22 +65,23 @@ impl Connection {
         let Payload::Connect(hello) = &p else {
             bail!("Expected Connect packet, got {p:?}");
         };
-
+        let hello = packet::event_mgr::Connect::try_from(hello)?;
         let world_id = hello.world_id;
         let channel_id = hello.channel_id;
-
         println!("Got hello: {p:?}");
         println!("Sending Ack ...");
 
-        let ack = Payload::ConnectAck(common::ConnectAck {
+        let ack = packet::event_mgr::ConnectAck {
             unk1: 0x0,
-            unk2: [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00],
+            unk2: [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00],
             world_id,
             channel_id,
             unk3: 0x0,
             unk4: 0x1,
-        });
-        self.stream.send(&ack).await?;
+        };
+        self.stream
+            .send(&Payload::ConnectAck(ack.try_into()?))
+            .await?;
 
         loop {
             let p = self.stream.recv().await?;

@@ -22,20 +22,17 @@ impl PacketStream {
     }
 
     pub async fn recv(&mut self) -> Result<Payload> {
-        println!("Awaiting header");
         let mut hdrbuf = [0u8; Header::SIZE];
         self.stream.read_exact(&mut hdrbuf).await?;
-        println!("Got hdrbuf: {:x?}", hdrbuf);
         let hdr = Header::decode(&hdrbuf)?;
         println!("Got hdr: {hdr:x?}");
-        let payload_len = hdr.len as u64 - Header::SIZE as u64;
-        println!("Payload len: {payload_len}");
 
+        let payload_len = hdr.len as u64 - Header::SIZE as u64;
         self.buf.resize(payload_len as usize, 0u8);
         let slice = &mut self.buf[..];
         self.stream.read_exact(slice).await?;
-
         println!("Got payload: {:x?}", slice);
+
         Ok(Payload::decode(&hdr, slice)?)
     }
 
