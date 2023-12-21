@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = [
+    "packet_proc",
+    "packet",
+    "server",
+]
+
+[profile.release]
+lto = true
+strip = true
