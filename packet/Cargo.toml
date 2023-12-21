@@ -6,10 +6,10 @@ edition = "2021"
 
 [dependencies]
 packet_proc = { version = "0.1.0", path = "../packet_proc" }
-aria = { version = "0.1.0", path = "../aria" }
+aria = { git = "https://github.com/darsto/aria.git", branch = "master" }
 anyhow = "1.0"
 bincode = "2.0.0-rc.3"
 static_assertions = "1.1"
-genmatch = { version = "0.2.0", path = "../genmatch" }
+genmatch = { git = "https://github.com/darsto/genmatch.git", branch = "master" }
 thiserror = "1.0"
 paste = "1.0"

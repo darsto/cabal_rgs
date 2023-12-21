@@ -6,7 +6,7 @@ exclude = ["/.*"]
 
 [dependencies]
 packet = { path = "../packet" }
-aria = { path = "../aria" }
+aria = { git = "https://github.com/darsto/aria.git", branch = "master" }
 anyhow = "1.0"
 clap = { version = "4.4", features = ["derive"] }
 num_enum = "0.7"
