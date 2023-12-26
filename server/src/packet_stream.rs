@@ -1,16 +1,26 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
+use log::trace;
 use packet::*;
 
 use anyhow::Result;
 use smol::io::{AsyncReadExt, AsyncWriteExt};
 use smol::Async;
+use std::fmt::Display;
 use std::net::TcpStream;
+use std::os::fd::AsRawFd;
 
 pub struct PacketStream {
     pub stream: Async<TcpStream>,
     pub buf: Vec<u8>,
+}
+
+impl Display for PacketStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let fd = self.stream.as_raw_fd();
+        write!(f, "Conn #{fd}")
+    }
 }
 
 impl PacketStream {
@@ -25,14 +35,15 @@ impl PacketStream {
         let mut hdrbuf = [0u8; Header::SIZE];
         self.stream.read_exact(&mut hdrbuf).await?;
         let hdr = Header::decode(&hdrbuf)?;
-        println!("Got hdr: {hdr:x?}");
+        trace!("{self}: got hdr: {hdr:x?}");
 
         let payload_len = hdr.len as u64 - Header::SIZE as u64;
         self.buf.resize(payload_len as usize, 0u8);
         let slice = &mut self.buf[..];
         self.stream.read_exact(slice).await?;
-        println!("Got payload: {:x?}", slice);
 
+        let slice = &self.buf[..];
+        trace!("{self}: got payload: {:x?}", slice);
         Ok(Payload::decode(&hdr, slice)?)
     }
 

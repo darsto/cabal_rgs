@@ -2,7 +2,8 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use aria::{BlockExt, BlockSlice};
-use packet::{Block, Payload, UnboundVec};
+use log::{info, trace};
+use packet::{Block, Payload};
 use server::packet_stream::PacketStream;
 
 use std::net::{TcpListener, TcpStream};
@@ -13,16 +14,8 @@ use std::time::Duration;
 use anyhow::Result;
 use smol::{Async, Timer};
 
-macro_rules! log {
-    ($s:literal) => {
-        print!("C: ");
-        println!($s);
-    };
-    ($s:literal, $($arg:tt),*) => {
-        print!("C: ");
-        println!($s, ($arg)*);
-    };
-}
+/// Log prefix
+const PREFIX: &str = "Client";
 
 async fn connect_timeout() -> std::io::Result<Async<TcpStream>> {
     let mut attempts = 0;
@@ -70,12 +63,12 @@ async fn start_client_test() {
         .await
         .unwrap();
 
-    log!("Sent Hello!");
-    log!("Waiting for Ack ...");
+    trace!("{PREFIX}: Sent Hello!");
+    trace!("{PREFIX}: Waiting for Ack ...");
 
     let p = conn.recv().await.unwrap();
     let Payload::ConnectAck(ack) = p else {
-        panic!("Expected ConnectAck packet, got {p:?}");
+        panic!("{PREFIX}: Expected ConnectAck packet, got {p:?}");
     };
     let ack = packet::crypto_mgr::ConnectAck::try_from(ack).unwrap();
 
@@ -86,17 +79,20 @@ async fn start_client_test() {
     assert_eq!(ack.unk5, 0x398ab300);
     assert_eq!(ack.unk6, 0x1f);
 
-    log!("Ack received!");
-    log!("Sending Key Request!");
+    trace!("{PREFIX}: Ack received!");
+    trace!("{PREFIX}: Sending Key Request ...");
 
     let req = Payload::EncryptKey2Request(packet::crypto_mgr::EncryptKey2Request {
         key_split_point: 0x1 ^ 0x1f398ab3,
     });
     conn.send(&req).await.unwrap();
 
+    trace!("{PREFIX}: Key Request sent!");
+    trace!("{PREFIX}: Waiting for response ...");
+
     let p = conn.recv().await.unwrap();
     let Payload::EncryptKey2Response(mut resp) = p else {
-        panic!("Expected EncryptKey2Response packet, got {p:?}");
+        panic!("{PREFIX}: Expected EncryptKey2Response packet, got {p:?}");
     };
 
     assert_eq!(resp.key_split_point, 0x1);
@@ -104,6 +100,9 @@ async fn start_client_test() {
 
     resp.shortkey.iter_mut().for_each(|b| *b ^= 0xb3);
     resp.shortkey.resize(32, 0x0);
+
+    trace!("{PREFIX}: Response received");
+    trace!("{PREFIX}: Sending Key Auth Request ...");
 
     let keybuf: [u8; 32] = (&resp.shortkey[0..32]).try_into().unwrap();
     let key = aria::Key::from(keybuf);
@@ -124,9 +123,12 @@ async fn start_client_test() {
     };
     conn.send(&Payload::KeyAuthRequest(req)).await.unwrap();
 
+    trace!("{PREFIX}: Key Auth Request sent!");
+    trace!("{PREFIX}: Waiting for response ...");
+
     let p = conn.recv().await.unwrap();
     let Payload::KeyAuthResponse(mut resp) = p else {
-        panic!("Expected KeyAuthResponse packet, got {p:?}");
+        panic!("{PREFIX}: Expected KeyAuthResponse packet, got {p:?}");
     };
 
     assert_eq!(resp.unk1, 0x1);
@@ -148,8 +150,10 @@ async fn start_client_test() {
     xor_blocks_mut(&mut resp.enc_warp);
     resp.enc_warp.iter_mut().for_each(|b| deckey.decrypt_mut(b));
     assert_eq!(resp.enc_warp.try_as_str(), Ok("Data/Warp.scp"));
-
     assert_eq!(resp.port, 38180);
+
+    trace!("{PREFIX}: Response received");
+    trace!("{PREFIX}: Sending ESYM Request ...");
 
     let req = packet::crypto_mgr::ESYMRequest {
         unk1: 0x0,
@@ -160,14 +164,19 @@ async fn start_client_test() {
         .await
         .unwrap();
 
+    trace!("{PREFIX}: ESYM Request sent!");
+    trace!("{PREFIX}: Waiting for response ...");
+
     let p = conn.recv().await.unwrap();
     let Payload::ESYM(resp) = p else {
-        panic!("Expected KeyAuthResponse packet, got {p:?}");
+        panic!("{PREFIX}: Expected KeyAuthResponse packet, got {p:?}");
     };
 
     let resp = packet::crypto_mgr::ESYMResponse::try_from(resp).unwrap();
-    println!("ESYM resp length: {}", resp.filesize);
-    log!("All sent!");
+    trace!("{PREFIX}: ESYM resp length: {}", resp.filesize);
+    trace!("{PREFIX}: Reponse received");
+
+    info!("{PREFIX}: All done. Exiting");
 }
 
 async fn start_server() -> Result<()> {
@@ -183,7 +192,8 @@ async fn start_server() -> Result<()> {
 }
 
 #[test]
-fn test_connect() {
+fn basic_crypto_mgr() {
+    server::setup_log(true);
     smol::block_on(async {
         let server_t = smol::spawn(start_server());
         let client_f = start_client_test();

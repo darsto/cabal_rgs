@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
+use log::{info, trace};
 use packet::Payload;
 use server::packet_stream::PacketStream;
 
@@ -11,16 +12,8 @@ use std::time::Duration;
 use anyhow::Result;
 use smol::{Async, Timer};
 
-macro_rules! log {
-    ($s:literal) => {
-        print!("C: ");
-        println!($s);
-    };
-    ($s:literal, $($arg:tt)*) => {
-        print!("C: ");
-        println!($s, ($arg)*);
-    };
-}
+/// Log prefix
+const PREFIX: &str = "Client";
 
 async fn connect_timeout() -> std::io::Result<Async<TcpStream>> {
     let mut attempts = 0;
@@ -54,8 +47,8 @@ async fn start_client_test() {
     conn.send(&Payload::Connect(hello.try_into().unwrap()))
         .await
         .unwrap();
-    log!("Sent Hello!");
-    log!("Waiting for Ack ...");
+    trace!("{PREFIX}: Sent Hello!");
+    trace!("{PREFIX}: Waiting for Ack ...");
 
     let p = conn.recv().await.unwrap();
     let Payload::ConnectAck(ack) = &p else {
@@ -71,16 +64,17 @@ async fn start_client_test() {
     assert_eq!(ack.channel_id, channel_id);
     assert_eq!(ack.unk3, 0x0);
     assert_eq!(ack.unk4, 0x1);
-    log!("Ack received!");
-    log!("Sending Keepalive!");
+    trace!("{PREFIX}: Ack received!");
+    trace!("{PREFIX}: Sending Keepalive!");
 
     let keepalive = Payload::Keepalive(packet::event_mgr::Keepalive {});
     conn.send(&keepalive).await.unwrap();
-    log!("All sent!");
 
     // make sure the connection wasn't terminated
     Timer::after(Duration::from_millis(100)).await;
     conn.send(&keepalive).await.unwrap();
+
+    info!("{PREFIX}: All done. Exiting");
 }
 
 async fn start_server() -> Result<()> {
@@ -93,7 +87,8 @@ async fn start_server() -> Result<()> {
 }
 
 #[test]
-fn test_connect() {
+fn basic_event_mgr() {
+    server::setup_log(true);
     smol::block_on(async {
         let server_t = smol::spawn(start_server());
         let client_f = start_client_test();

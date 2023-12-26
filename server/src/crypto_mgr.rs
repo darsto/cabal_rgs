@@ -3,9 +3,12 @@
 
 use crate::packet_stream::PacketStream;
 use aria::BlockExt;
+use log::{debug, error, info, trace};
 use packet::*;
 
 use rand::Rng;
+use std::cell::OnceCell;
+use std::fmt::Display;
 use std::os::fd::AsRawFd;
 use std::{net::TcpListener, sync::Arc};
 
@@ -26,7 +29,10 @@ impl Listener {
     }
 
     pub async fn listen(&mut self) -> Result<()> {
-        println!("Listening on {}", self.tcp_listener.get_ref().local_addr()?);
+        info!(
+            "Listener: started on {}",
+            self.tcp_listener.get_ref().local_addr()?
+        );
 
         loop {
             let (stream, _) = self.tcp_listener.accept().await?;
@@ -34,18 +40,18 @@ impl Listener {
             let conn = Connection {
                 id: stream.as_raw_fd(),
                 stream: PacketStream::new(stream),
-                shortkey: None,
+                shortkey: OnceCell::new(),
                 args: self.args.clone(),
             };
 
             // Give the connection handler its own background task
             smol::spawn(async move {
                 let id = conn.id;
-                println!("New connection #{id}");
+                info!("Listener: new connection #{id}");
                 if let Err(err) = conn.handle().await {
-                    eprintln!("Connection #{id} error: {err}");
+                    error!("Listener: connection #{id} error: {err}");
                 }
-                println!("Closing connection #{id}");
+                info!("Listener: closing connection #{id}");
             })
             .detach();
             // for now the tasks are just dropped, but we might want to
@@ -64,20 +70,29 @@ fn xor_blocks_mut(blocks: &mut [Block]) {
 pub struct Connection {
     pub id: i32,
     pub stream: PacketStream,
-    pub shortkey: Option<aria::Key>,
+    pub shortkey: OnceCell<aria::Key>,
     pub args: Arc<crate::args::Config>,
+}
+
+impl Display for Connection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Conn #{}", self.id)
+    }
 }
 
 impl Connection {
     pub async fn handle_key_req(&mut self, mut req: crypto_mgr::EncryptKey2Request) -> Result<()> {
-        println!(
-            "key req key_split_point (w/o xor) = {:#x}",
+        debug!(
+            "{self}: key req key_split_point (w/o xor) = {:#x}",
             req.key_split_point
         );
         req.key_split_point ^= 0x1f398ab3;
-        println!("key req key_split_point = {:#x}", req.key_split_point);
+        debug!(
+            "{self}: key req key_split_point = {:#x}",
+            req.key_split_point
+        );
 
-        let key = self.shortkey.get_or_insert_with(|| {
+        let key = self.shortkey.get_or_init(|| {
             let mut rng = rand::thread_rng();
             let mut keybuf = [0u8; 32];
             (0..8).for_each(|i| {
@@ -87,10 +102,10 @@ impl Connection {
                     rng.gen_range(b'A'..=b'Z')
                 };
             });
-            println!("key={keybuf:x?}");
             aria::Key::from(keybuf)
         });
 
+        debug!("{self}: key={key:x?}");
         let shortkey = &key.as_bytes()[0..9];
         let r = Payload::EncryptKey2Response(crypto_mgr::EncryptKey2Response {
             key_split_point: req.key_split_point,
@@ -101,12 +116,12 @@ impl Connection {
 
     pub async fn handle_auth_req(&mut self, mut req: crypto_mgr::KeyAuthRequest) -> Result<()> {
         req.xor_port ^= 0x1f398ab3;
-        println!("auth req xor_port = {:x}", req.xor_port);
+        debug!("{self}: auth req xor_port = {:x}", req.xor_port);
 
         assert_eq!(req.unk1, 0x0);
         assert_eq!(req.unk2, 0x0);
 
-        let key = self.shortkey.as_ref().context("shortkey not initialized")?;
+        let key = self.shortkey.get().context("shortkey not initialized")?;
         let enckey = key.expand();
         let deckey: aria::DecryptKey = enckey.clone().into();
 
@@ -130,7 +145,7 @@ impl Connection {
         let ip_local = ip_local.try_as_str()?;
         let srchash = srchash.try_as_str()?;
         let binbuf = binbuf.try_as_str()?;
-        println!("ip_origin={ip_origin}, ip_local={ip_local}, srchash={srchash}, binbuf={binbuf}");
+        debug!("{self}: ip_origin={ip_origin}, ip_local={ip_local}, srchash={srchash}, binbuf={binbuf}");
 
         let ip_local = Block::new("127.0.0.1");
         let mut enc_item: [Block; 16] = Block::arr_from_slice("Data/Item.scp");
@@ -164,11 +179,11 @@ impl Connection {
             bincode::config::legacy(),
         )?;
         if len != esym.bytes.0.len() {
-            bail!("Trailing data in ESYM packet {:#?}", esym);
+            bail!("{self}: Trailing data in ESYM packet {:#?}", esym);
         }
 
-        println!(
-            "ESYM req nation = {}, srchash = {}",
+        debug!(
+            "{self}: ESYM req nation = {}, srchash = {}",
             req.nation.0, req.srchash.0
         );
 
@@ -195,15 +210,14 @@ impl Connection {
     pub async fn handle(mut self) -> Result<()> {
         let p = self.stream.recv().await?;
         let Payload::Connect(hello) = &p else {
-            bail!("Expected Connect packet, got {p:?}");
+            bail!("{self}: Expected Connect packet, got {p:?}");
         };
         let hello = packet::crypto_mgr::Connect::try_from(hello)?;
 
         assert_eq!(hello.unk1, 0xf6);
         assert_eq!(hello.world_id, 0xfd);
 
-        println!("Got hello: {p:?}");
-        println!("Sending Ack ...");
+        trace!("{self}: Got hello: {p:?}");
 
         let ack = packet::crypto_mgr::ConnectAck {
             unk1: 0x0,
@@ -224,7 +238,7 @@ impl Connection {
                 Payload::KeyAuthRequest(req) => self.handle_auth_req(req).await?,
                 Payload::ESYM(req) => self.handle_esym(req).await?,
                 _ => {
-                    println!("Got packet: {p:?}");
+                    trace!("{self}: Got packet: {p:?}");
                 }
             }
         }

@@ -2,8 +2,10 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use crate::packet_stream::PacketStream;
+use log::{error, info, trace};
 use packet::*;
 
+use std::fmt::Display;
 use std::os::fd::AsRawFd;
 use std::{net::TcpListener, sync::Arc};
 
@@ -27,7 +29,10 @@ impl Listener {
     }
 
     pub async fn listen(&mut self) -> Result<()> {
-        println!("Listening on {}", self.tcp_listener.get_ref().local_addr()?);
+        info!(
+            "Listener: started on {}",
+            self.tcp_listener.get_ref().local_addr()?
+        );
 
         loop {
             let (stream, _) = self.tcp_listener.accept().await?;
@@ -40,11 +45,11 @@ impl Listener {
             // Give the connection handler its own background task
             smol::spawn(async move {
                 let id = conn.id;
-                println!("New connection #{id}");
+                info!("Listener: new connection #{id}");
                 if let Err(err) = conn.handle().await {
-                    eprintln!("Connection #{id} error: {err}");
+                    error!("Listener: connection #{id} error: {err}");
                 }
-                println!("Closing connection #{id}");
+                info!("Listener: closing connection #{id}");
             })
             .detach();
             // for now the tasks are just dropped, but we might want to
@@ -59,17 +64,22 @@ pub struct Connection {
     pub stream: PacketStream,
 }
 
+impl Display for Connection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Conn #{}", self.id)
+    }
+}
+
 impl Connection {
     pub async fn handle(mut self) -> Result<()> {
         let p = self.stream.recv().await?;
         let Payload::Connect(hello) = &p else {
-            bail!("Expected Connect packet, got {p:?}");
+            bail!("{self}: Expected Connect packet, got {p:?}");
         };
         let hello = packet::event_mgr::Connect::try_from(hello)?;
         let world_id = hello.world_id;
         let channel_id = hello.channel_id;
-        println!("Got hello: {p:?}");
-        println!("Sending Ack ...");
+        trace!("{self}: Got hello: {p:?}");
 
         let ack = packet::event_mgr::ConnectAck {
             unk1: 0x0,
@@ -85,7 +95,7 @@ impl Connection {
 
         loop {
             let p = self.stream.recv().await?;
-            println!("Got packet: {p:?}");
+            trace!("Got packet: {p:?}");
         }
     }
 }

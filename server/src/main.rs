@@ -6,10 +6,13 @@
 
 use clap::Parser;
 use futures::try_join;
+use server::setup_log;
 use smol::Async;
 use std::{net::TcpListener, sync::Arc};
 
 fn main() {
+    setup_log(false);
+
     let args = Arc::new(server::args::Config::parse());
 
     let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 38171)) //
