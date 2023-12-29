@@ -80,7 +80,10 @@ async fn start_client_test() {
 async fn start_server() -> Result<()> {
     let tcp_listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 38171)) //
         .expect("Cannot bind to 38171");
-    let args = Arc::new(server::args::Config::default());
+    let args = Arc::new(server::args::Config {
+        services: vec![server::args::Service::EventMgr],
+        ..Default::default()
+    });
 
     let mut listener = server::event_mgr::Listener::new(tcp_listener, args);
     listener.listen().await

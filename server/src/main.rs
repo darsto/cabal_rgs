@@ -14,6 +14,10 @@ fn main() {
     setup_log(false);
 
     let args = Arc::new(server::args::Config::parse());
+    if args.services.is_empty() {
+        eprintln!("At least one --service must be specified. See --help");
+        return;
+    }
 
     let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 38171)) //
         .expect("Cannot bind to 38171");

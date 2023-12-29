@@ -183,6 +183,7 @@ async fn start_server() -> Result<()> {
     let tcp_listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 32001)) //
         .expect("Cannot bind to 32001");
     let args = Arc::new(server::args::Config {
+        services: vec![server::args::Service::CryptoMgr],
         resources_dir: PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()),
         ..Default::default()
     });
