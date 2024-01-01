@@ -12,6 +12,5 @@ Procedural macro to simplify defining packet structures
 proc-macro = true
 
 [dependencies]
-bincode = "2.0.0-rc.3"
 quote = "1.0"
 syn = { version = "2.0" }
