@@ -113,8 +113,8 @@ async fn start_client_test() {
     let req = packet::crypto_mgr::KeyAuthRequest {
         unk1: 0x0,
         unk2: 0x0,
-        ip_origin: xor_block(enckey.encrypt(Block::new("255.255.255.127"))),
-        ip_local: xor_block(enckey.encrypt(Block::new("127.0.0.1"))),
+        netmask: xor_block(enckey.encrypt(Block::new("255.255.255.127"))),
+        nation: xor_block(enckey.encrypt(Block::new("127.0.0.1"))),
         srchash: xor_blocks(
             Block::arr_from_slice::<_, 4>("f2b76e1ee8a92a8ce99a41c07926d3f3")
                 .map(|b| enckey.encrypt(b)),

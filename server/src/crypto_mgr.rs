@@ -141,13 +141,13 @@ impl Connection {
         let enckey = key.expand();
         let deckey: aria::DecryptKey = enckey.clone().into();
 
-        xor_blocks_mut(core::slice::from_mut(&mut req.ip_origin));
-        deckey.decrypt_mut(&mut req.ip_origin);
-        let ip_origin = &req.ip_origin;
+        xor_blocks_mut(core::slice::from_mut(&mut req.netmask));
+        deckey.decrypt_mut(&mut req.netmask);
+        let netmask = &req.netmask;
 
-        xor_blocks_mut(core::slice::from_mut(&mut req.ip_local));
-        deckey.decrypt_mut(&mut req.ip_local);
-        let ip_local = &req.ip_local;
+        xor_blocks_mut(core::slice::from_mut(&mut req.nation));
+        deckey.decrypt_mut(&mut req.nation);
+        let nation = &req.nation;
 
         xor_blocks_mut(&mut req.srchash);
         req.srchash.iter_mut().for_each(|b| deckey.decrypt_mut(b));
@@ -157,19 +157,19 @@ impl Connection {
         req.binbuf.iter_mut().for_each(|b| deckey.decrypt_mut(b));
         let binbuf = req.binbuf;
 
-        let ip_origin = ip_origin
+        let netmask = netmask
             .try_as_str()
-            .with_context(|| format!("invalid str in ip_origin: {ip_origin:?}"))?;
-        let ip_local = ip_local
+            .with_context(|| format!("invalid str in netmask: {netmask:?}"))?;
+        let nation = nation
             .try_as_str()
-            .with_context(|| format!("invalid str in ip_local: {ip_local:?}"))?;
+            .with_context(|| format!("invalid str in nation: {nation:?}"))?;
         let srchash = srchash
             .try_as_str()
             .with_context(|| format!("invalid str in srchash: {srchash:?}"))?;
         let binbuf = binbuf
             .try_as_str()
             .with_context(|| format!("invalid str in binbuf: {binbuf:?}"))?;
-        debug!("{self}: ip_origin={ip_origin}, ip_local={ip_local}, srchash={srchash}, binbuf={binbuf}");
+        debug!("{self}: netmask={netmask}, nation={nation}, srchash={srchash}, binbuf={binbuf}");
 
         let ip_local = Block::new("127.0.0.1");
         let mut enc_item: [Block; 16] = Block::arr_from_slice("Data/Item.scp");
