@@ -98,6 +98,7 @@ async fn start_client_test() {
     assert_eq!(resp.key_split_point, 0x1);
     assert_eq!(resp.shortkey.len(), 9);
 
+    resp.shortkey.0.as_mut_slice()[0..8].rotate_right(resp.key_split_point as usize);
     resp.shortkey.iter_mut().for_each(|b| *b ^= 0xb3);
     resp.shortkey.resize(32, 0x0);
 

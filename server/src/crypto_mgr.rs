@@ -101,7 +101,9 @@ impl Connection {
             req.key_split_point
         );
 
-        let key = self.shortkey.get_or_init(|| {
+        // why the extra scope is needed: https://github.com/rust-lang/rust/issues/69663
+        // rng is not Send, and rust complains "this value is used across an await"
+        {
             let mut rng = rand::thread_rng();
             let mut keybuf = [0u8; 32];
             (0..8).for_each(|i| {
@@ -111,11 +113,16 @@ impl Connection {
                     rng.gen_range(b'A'..=b'Z')
                 };
             });
-            aria::Key::from(keybuf)
-        });
+            let shortkey = aria::Key::from(keybuf);
+            debug!("{self}: shortkey={:x?}", &shortkey.as_bytes()[0..8]);
+            let _ = self.shortkey.set(shortkey);
+        }
 
-        debug!("{self}: key={key:x?}");
-        let shortkey = &key.as_bytes()[0..9];
+        let mut shortkey = self.shortkey.get().unwrap().clone();
+        shortkey.as_bytes_mut()[0..8].rotate_left(req.key_split_point as usize);
+
+        debug!("{self}: sent shortkey={:x?}", &shortkey.as_bytes()[0..8]);
+        let shortkey = &shortkey.as_bytes()[0..9];
         let r = Payload::EncryptKey2Response(crypto_mgr::EncryptKey2Response {
             key_split_point: req.key_split_point,
             shortkey: UnboundVec(shortkey.iter().map(|b| b ^ 0xb3).collect()),
@@ -125,7 +132,7 @@ impl Connection {
 
     pub async fn handle_auth_req(&mut self, mut req: crypto_mgr::KeyAuthRequest) -> Result<()> {
         req.xor_port ^= 0x1f398ab3;
-        debug!("{self}: auth req xor_port = {:x}", req.xor_port);
+        debug!("{self}: auth req xor_port = {}", req.xor_port);
 
         assert_eq!(req.unk1, 0x0);
         assert_eq!(req.unk2, 0x0);
@@ -150,10 +157,18 @@ impl Connection {
         req.binbuf.iter_mut().for_each(|b| deckey.decrypt_mut(b));
         let binbuf = req.binbuf;
 
-        let ip_origin = ip_origin.try_as_str()?;
-        let ip_local = ip_local.try_as_str()?;
-        let srchash = srchash.try_as_str()?;
-        let binbuf = binbuf.try_as_str()?;
+        let ip_origin = ip_origin
+            .try_as_str()
+            .with_context(|| format!("invalid str in ip_origin: {ip_origin:?}"))?;
+        let ip_local = ip_local
+            .try_as_str()
+            .with_context(|| format!("invalid str in ip_local: {ip_local:?}"))?;
+        let srchash = srchash
+            .try_as_str()
+            .with_context(|| format!("invalid str in srchash: {srchash:?}"))?;
+        let binbuf = binbuf
+            .try_as_str()
+            .with_context(|| format!("invalid str in binbuf: {binbuf:?}"))?;
         debug!("{self}: ip_origin={ip_origin}, ip_local={ip_local}, srchash={srchash}, binbuf={binbuf}");
 
         let ip_local = Block::new("127.0.0.1");
