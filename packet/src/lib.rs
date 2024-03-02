@@ -16,6 +16,7 @@ use thiserror::Error;
 pub mod common;
 pub mod crypto_mgr;
 pub mod event_mgr;
+pub mod global_mgr;
 
 mod helper_types;
 pub use helper_types::*;
