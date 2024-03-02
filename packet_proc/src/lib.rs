@@ -21,8 +21,14 @@ pub fn packet(
     attr: proc_macro::TokenStream,
     input: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let id =
-        parse_int(attr.to_string().as_str()).expect("Missing ID attribute. E.g.: #[packet(0x42)]");
+    let id = if !attr.to_string().is_empty() {
+        Some(
+            parse_int(attr.to_string().as_str())
+                .expect("Malformed ID attribute. Expecting e.g.: #[packet(0x42)]"),
+        )
+    } else {
+        None
+    };
 
     let ast = syn::parse_macro_input!(input as syn::DeriveInput);
     let packet_vis = ast.vis;
@@ -41,17 +47,21 @@ pub fn packet(
     }
 
     // Re-create the original struct
-    let ret_stream = quote! {
+    let mut ret_stream = quote! {
         #(#packet_attrs)*
         #[derive(Debug, PartialEq, Default, bincode::Encode, bincode::Decode)]
         #packet_vis struct #packet_ident {
             #(#fields),*
         }
-
-        impl #packet_ident {
-            pub const ID: usize = #id;
-        }
     };
+
+    if let Some(id) = id {
+        ret_stream.extend(quote! {
+            impl #packet_ident {
+                pub const ID: usize = #id;
+            }
+        });
+    }
 
     ret_stream.into()
 }
