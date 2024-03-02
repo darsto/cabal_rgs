@@ -125,7 +125,7 @@ impl Connection {
         let shortkey = &shortkey.as_bytes()[0..9];
         let r = Payload::EncryptKey2Response(crypto_mgr::EncryptKey2Response {
             key_split_point: req.key_split_point,
-            shortkey: UnboundVec(shortkey.iter().map(|b| b ^ 0xb3).collect()),
+            shortkey: BoundVec(shortkey.iter().map(|b| b ^ 0xb3).collect()),
         });
         self.stream.send(&r).await
     }
@@ -222,10 +222,10 @@ impl Connection {
         let r = crypto_mgr::ESYMResponse {
             unk1: 0x1,
             filesize: data.len() as u32,
-            esym: UnboundVec(data),
+            esym: BoundVec(data),
         };
 
-        let mut bytes = UnboundVec(vec![]);
+        let mut bytes = BoundVec(vec![]);
         bincode::encode_into_std_write(r, &mut bytes.0, bincode::config::legacy())?;
         let r = Payload::ESYM(crypto_mgr::ESYM { bytes });
         self.stream.send(&r).await

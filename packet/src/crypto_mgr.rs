@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use crate::{assert_def_packet_size, UnboundVec};
+use crate::{assert_def_packet_size, BoundVec};
 use packet_proc::packet;
 
 #[packet(0x5)]
@@ -37,7 +37,7 @@ assert_def_packet_size!(EncryptKey2Request, 14 - Header::SIZE);
 #[packet(0x306)]
 pub struct EncryptKey2Response {
     key_split_point: u32, // un-xored, usually either 1 or 5
-    shortkey: UnboundVec<u8>,
+    shortkey: BoundVec<0, u8>,
 }
 assert_def_packet_size!(EncryptKey2Response, 14 - Header::SIZE);
 
@@ -72,7 +72,7 @@ assert_def_packet_size!(KeyAuthResponse, 809 - Header::SIZE);
 // Possibly an oversight in original design
 #[packet(0x30c)]
 pub struct ESYM {
-    bytes: UnboundVec<u8>,
+    bytes: BoundVec<0, u8>,
 }
 
 #[packet(0x30c)]
@@ -87,6 +87,6 @@ packet_alias!(ESYMRequest, ESYM);
 pub struct ESYMResponse {
     unk1: u32,     // 0x0
     filesize: u32, // 0x0
-    esym: UnboundVec<u8>,
+    esym: BoundVec<0, u8>,
 }
 packet_alias!(ESYMResponse, ESYM);

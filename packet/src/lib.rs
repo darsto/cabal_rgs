@@ -217,7 +217,7 @@ macro_rules! packet_alias {
             type Error = anyhow::Error;
 
             fn try_into(self) -> std::result::Result<$($from)::+, Self::Error> {
-                let mut bytes = UnboundVec(vec![]);
+                let mut bytes = BoundVec(vec![]);
                 bincode::encode_into_std_write(self, &mut bytes.0, bincode::config::legacy())?;
                 Ok($($from)::+ { bytes })
             }
@@ -227,7 +227,7 @@ macro_rules! packet_alias {
             type Error = anyhow::Error;
 
             fn try_into(self) -> std::result::Result<$($from)::+, Self::Error> {
-                let mut bytes = UnboundVec(vec![]);
+                let mut bytes = BoundVec(vec![]);
                 bincode::encode_into_std_write(self, &mut bytes.0, bincode::config::legacy())?;
                 Ok($($from)::+ { bytes })
             }

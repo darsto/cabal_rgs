@@ -3,6 +3,7 @@
 
 use std::{
     any::TypeId,
+    mem::size_of,
     ops::{Deref, DerefMut},
 };
 
@@ -77,14 +78,14 @@ impl<'a> BorrowDecode<'a> for Block {
     }
 }
 
-/// Vec that doesn't encode its length.
-/// When decoding, all source bytes will be consumed.
+/// Vec that encodes its length using S bytes (1,2,4,8, or 0).
+/// When S is 0, the decoding will consume all source bytes.
 #[derive(Debug, Default, PartialEq)]
-pub struct UnboundVec<T>(pub Vec<T>)
+pub struct BoundVec<const S: usize, T>(pub Vec<T>)
 where
     T: Encode + Decode;
 
-impl<T> Encode for UnboundVec<T>
+impl<const S: usize, T> Encode for BoundVec<S, T>
 where
     T: Encode + Decode + 'static,
 {
@@ -92,6 +93,23 @@ where
         &self,
         encoder: &mut E,
     ) -> std::result::Result<(), EncodeError> {
+        match S {
+            0 => {}
+            1 => encoder
+                .writer()
+                .write(&(self.0.len() as u8).to_le_bytes())?,
+            2 => encoder
+                .writer()
+                .write(&(self.0.len() as u16).to_le_bytes())?,
+            4 => encoder
+                .writer()
+                .write(&(self.0.len() as u32).to_le_bytes())?,
+            8 => encoder
+                .writer()
+                .write(&(self.0.len() as u64).to_le_bytes())?,
+            _ => unreachable!(),
+        }
+
         if TypeId::of::<T>() == TypeId::of::<u8>() {
             // Safety: T = u8
             let t: &[u8] = unsafe { core::mem::transmute(&self.0[..]) };
@@ -106,44 +124,58 @@ where
     }
 }
 
-impl<T> Decode for UnboundVec<T>
+impl<const S: usize, T> Decode for BoundVec<S, T>
 where
     T: Encode + Decode + 'static,
 {
     fn decode<D: bincode::de::Decoder>(decoder: &mut D) -> std::result::Result<Self, DecodeError> {
-        const FULL_PACKET_SIZE: usize = 65536 + 1;
-        let mut unused_buf = [0u8; FULL_PACKET_SIZE];
-        let len = match decoder.reader().read(&mut unused_buf) {
-            Err(DecodeError::UnexpectedEnd { additional }) => {
-                debug_assert!(additional <= FULL_PACKET_SIZE);
-                FULL_PACKET_SIZE - additional
+        let mut lenbuf = [0u8; S];
+        decoder.reader().read(&mut lenbuf)?;
+
+        let len = match S {
+            0 => {
+                const FULL_PACKET_SIZE: usize = 65536 + 1;
+                let mut unused_buf = [0u8; FULL_PACKET_SIZE];
+                let len = match decoder.reader().read(&mut unused_buf) {
+                    Err(DecodeError::UnexpectedEnd { additional }) => {
+                        debug_assert!(additional <= FULL_PACKET_SIZE);
+                        FULL_PACKET_SIZE - additional
+                    }
+                    Err(err) => return Err(err),
+                    Ok(_) => {
+                        return Err(DecodeError::Other("Data has no end"));
+                    }
+                };
+
+                // round down, ignore the remainder for now
+                len / size_of::<T>()
             }
-            Err(err) => return Err(err),
-            Ok(_) => {
-                return Err(DecodeError::Other("Data has no end"));
-            }
+            1 => u8::from_le_bytes(lenbuf[..1].try_into().unwrap()) as usize,
+            2 => u16::from_le_bytes(lenbuf[..2].try_into().unwrap()) as usize,
+            4 => u32::from_le_bytes(lenbuf[..4].try_into().unwrap()) as usize,
+            8 => u64::from_le_bytes(lenbuf[..8].try_into().unwrap()) as usize,
+            _ => unreachable!(),
         };
 
+        decoder.claim_container_read::<T>(len)?;
         if TypeId::of::<T>() == TypeId::of::<u8>() {
+            decoder.unclaim_bytes_read(len);
             let mut vec = vec![0u8; len];
             decoder.reader().read(&mut vec)?;
             // Safety: Vec<T> is Vec<u8>
-            Ok(UnboundVec(unsafe { core::mem::transmute(vec) }))
+            Ok(BoundVec(unsafe { core::mem::transmute(vec) }))
         } else {
-            decoder.claim_container_read::<T>(len)?;
-
             let mut vec = Vec::with_capacity(len);
             for _ in 0..len {
                 decoder.unclaim_bytes_read(core::mem::size_of::<T>());
-
                 vec.push(T::decode(decoder)?);
             }
-            Ok(UnboundVec(vec))
+            Ok(BoundVec(vec))
         }
     }
 }
 
-impl<'a, T> BorrowDecode<'a> for UnboundVec<T>
+impl<'a, const S: usize, T> BorrowDecode<'a> for BoundVec<S, T>
 where
     T: Encode + Decode,
 {
@@ -152,7 +184,7 @@ where
     }
 }
 
-impl<T> Deref for UnboundVec<T>
+impl<const S: usize, T> Deref for BoundVec<S, T>
 where
     T: Encode + Decode,
 {
@@ -163,7 +195,7 @@ where
     }
 }
 
-impl<T> DerefMut for UnboundVec<T>
+impl<const S: usize, T> DerefMut for BoundVec<S, T>
 where
     T: Encode + Decode,
 {
@@ -181,7 +213,7 @@ impl Encode for NulltermString {
         &self,
         encoder: &mut E,
     ) -> std::result::Result<(), EncodeError> {
-        let vec = UnboundVec(Vec::from(self.0.as_bytes()));
+        let vec = BoundVec::<0, u8>(Vec::from(self.0.as_bytes()));
         vec.encode(encoder)?;
         0u8.encode(encoder)
     }
