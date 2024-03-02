@@ -7,8 +7,10 @@ use crate::BoundVec;
 
 #[packet(0x0)]
 pub struct Unknown {
-    bytes: BoundVec<0, u8>,
+    id: u16,
+    data: UnknownPayload,
 }
+pub type UnknownPayload = BoundVec<0, u8>;
 
 #[packet(0x5)]
 pub struct Connect {

@@ -4,12 +4,15 @@
 // Rust-analyzer complains at the assert_def_packet_size! definition
 #![allow(clippy::items_after_test_module)]
 
+use std::any::TypeId;
+
 use anyhow::Result;
 use bincode::{
     config,
     error::{DecodeError, EncodeError},
     Decode, Encode,
 };
+use common::{Unknown, UnknownPayload};
 use genmatch::*;
 use thiserror::Error;
 
@@ -38,6 +41,9 @@ pub enum Payload {
     KeyAuthRequest(crypto_mgr::KeyAuthRequest),
     KeyAuthResponse(crypto_mgr::KeyAuthResponse),
     ESYM(crypto_mgr::ESYM),
+
+    /* Global Manager packets */
+    ServerState(global_mgr::ServerState),
 }
 
 #[derive(Debug, PartialEq, Encode, Decode)]
@@ -102,36 +108,71 @@ impl Payload {
 
     #[genmatch_id(Payload)]
     pub fn decode_raw(data: &[u8], id: usize) -> Result<Payload, DecodeError> {
-        let (obj, len) = bincode::decode_from_slice::<EnumStructType, _>(data, config::legacy())?;
+        let (obj, _len) = bincode::decode_from_slice::<EnumStructType, _>(data, config::legacy())?;
         Ok(EnumVariantType(obj))
+    }
+
+    fn encode_into_std_write<T: Encode>(
+        &self,
+        obj: &T,
+        dst: &mut Vec<u8>,
+    ) -> Result<usize, EncodeError> {
+        bincode::encode_into_std_write(obj, dst, config::legacy())
     }
 
     #[genmatch_self(Payload)]
     pub fn encode_raw(&self, dst: &mut Vec<u8>) -> Result<usize, EncodeError> {
-        bincode::encode_into_std_write(inner, dst, config::legacy())
+        Self::encode_into_std_write(self, inner, dst)
     }
 
     #[genmatch_self(Payload)]
-    pub fn id(&self) -> u16 {
+    fn _id(&self) -> u16 {
         EnumStructType::ID as u16
+    }
+
+    pub fn id(&self) -> u16 {
+        if let Payload::Unknown(unk) = &self {
+            unk.id
+        } else {
+            self._id()
+        }
+    }
+
+    #[genmatch_id(Payload)]
+    pub fn type_id(id: usize) -> TypeId {
+        TypeId::of::<EnumStructType>()
     }
 
     pub fn encode(&self, dst: &mut Vec<u8>) -> Result<usize, PayloadEncodeError> {
         // reserve size for header
         dst.resize(Header::SIZE, 0u8);
         // encode into the rest of vector
-        let len = Header::SIZE + self.encode_raw(dst)?;
+        let len = if let Payload::Unknown(unk) = &self {
+            let len = bincode::encode_into_std_write(&unk.data, dst, config::legacy())?;
+            Header::SIZE + len
+        } else {
+            Header::SIZE + self.encode_raw(dst)?
+        };
         let len: u16 = len
             .try_into()
             .map_err(|_e| PayloadEncodeError::PayloadTooLong { payload_len: len })?;
 
-        let hdr = Header::new(self.id(), len);
+        let mut hdr = Header::new(self.id(), len);
+        if let Payload::Unknown(inner) = &self {
+            hdr.id = inner.id;
+        }
         hdr.encode(&mut dst[0..Header::SIZE])?;
         Ok(len as usize)
     }
 
     pub fn decode(hdr: &Header, data: &[u8]) -> Result<Self, DecodeError> {
-        let payload = Self::decode_raw(data, hdr.id as usize)?;
+        let payload = if Self::type_id(hdr.id as usize) == TypeId::of::<Unknown>() {
+            let (data, _len) =
+                bincode::decode_from_slice::<UnknownPayload, _>(data, config::legacy())?;
+            Payload::Unknown(Unknown { id: hdr.id, data })
+        } else {
+            Self::decode_raw(data, hdr.id as usize)?
+        };
         Ok(payload)
     }
 }
@@ -234,4 +275,22 @@ macro_rules! packet_alias {
             }
         }
     };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encode() {
+        let p = Payload::Unknown(Unknown {
+            id: 0xc3e,
+            data: BoundVec(vec![118, 1, 0, 0, 103, 35, 108, 32]),
+        });
+
+        let mut bytes: Vec<u8> = Vec::new();
+        p.encode(&mut bytes).unwrap();
+
+        println!("{:#?}", bytes);
+    }
 }
