@@ -43,10 +43,10 @@ assert_def_packet_size!(EncryptKey2Response, 14 - Header::SIZE);
 
 #[packet(0x2f3)]
 pub struct KeyAuthRequest {
-    unk1: u32, // 0x0
-    unk2: u32, // 0x0
-    netmask: Block, // expecting "255.255.255.127"
-    nation: Block,  // expecting "BRA"
+    unk1: u32,           // 0x0
+    unk2: u32,           // 0x0
+    netmask: Block,      // expecting "255.255.255.127"
+    nation: Block,       // expecting "BRA"
     srchash: [Block; 4], // expecting f2b76e1ee8a92a8ce99a41c07926d3f3
     binbuf: [Block; 4],  // expecting "empty"
     xor_port: u32,       // global db agent port? xored with 0x1f398ab3, ends up 38180
