@@ -3,7 +3,8 @@
 
 use std::{
     any::TypeId,
-    mem::size_of,
+    fmt::Debug,
+    mem::{size_of, MaybeUninit},
     ops::{Deref, DerefMut},
 };
 
@@ -75,6 +76,23 @@ impl Decode for Block {
 impl<'a> BorrowDecode<'a> for Block {
     fn borrow_decode<D: BorrowDecoder<'a>>(_: &mut D) -> Result<Self, DecodeError> {
         unimplemented!();
+    }
+}
+
+/// An array that implements Default trait even for sizes > 32.
+/// Safety Note: T must be a primitive
+#[derive(PartialEq, bincode::Encode, bincode::Decode)]
+pub struct Arr<T: 'static, const S: usize>([T; S]);
+
+impl<T: Debug, const S: usize> Debug for Arr<T, S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<T, const S: usize> Default for Arr<T, S> {
+    fn default() -> Self {
+        Self(unsafe { MaybeUninit::<[T; S]>::zeroed().assume_init() })
     }
 }
 
