@@ -10,6 +10,7 @@ use clap::{Parser, ValueEnum};
 pub enum Service {
     CryptoMgr,
     EventMgr,
+    Proxy,
 }
 
 #[derive(Parser, Debug, Default)]
@@ -20,6 +21,9 @@ pub struct Config {
 
     #[clap(flatten)]
     pub event_mgr_args: crate::event_mgr::Args,
+
+    #[clap(flatten)]
+    pub proxy_args: crate::proxy::ProxyArgs,
 
     #[clap(default_value = ".")]
     #[arg(short = 'r', long)]

@@ -6,6 +6,7 @@ pub mod packet_stream;
 
 pub mod crypto_mgr;
 pub mod event_mgr;
+pub mod proxy;
 
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
