@@ -6,6 +6,7 @@ use log::{error, info, trace};
 use packet::*;
 
 use std::fmt::Display;
+use std::net::TcpStream;
 use std::os::fd::AsRawFd;
 use std::{net::TcpListener, sync::Arc};
 
@@ -45,7 +46,7 @@ impl Listener {
 
             let conn = Connection {
                 id: stream.as_raw_fd(),
-                stream: PacketStream::new(stream),
+                stream: PacketStream::new(stream.as_raw_fd(), stream),
             };
 
             // Give the connection handler its own background task
@@ -67,7 +68,7 @@ impl Listener {
 
 pub struct Connection {
     pub id: i32,
-    pub stream: PacketStream,
+    pub stream: PacketStream<Async<TcpStream>>,
 }
 
 impl Display for Connection {

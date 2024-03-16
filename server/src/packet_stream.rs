@@ -1,36 +1,38 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
+use futures::{AsyncRead, AsyncWrite};
 use log::trace;
 use packet::*;
 
 use anyhow::Result;
 use smol::io::{AsyncReadExt, AsyncWriteExt};
-use smol::Async;
 use std::fmt::Display;
-use std::net::TcpStream;
-use std::os::fd::AsRawFd;
 
-pub struct PacketStream {
-    pub stream: Async<TcpStream>,
+#[derive(Debug)]
+pub struct PacketStream<T: Unpin> {
+    pub id: i32,
+    pub stream: T,
     pub buf: Vec<u8>,
 }
 
-impl Display for PacketStream {
+impl<T: Unpin> Display for PacketStream<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let fd = self.stream.as_raw_fd();
-        write!(f, "Conn #{fd}")
+        write!(f, "Conn #{}", self.id)
     }
 }
 
-impl PacketStream {
-    pub fn new(stream: Async<TcpStream>) -> Self {
+impl<T: Unpin> PacketStream<T> {
+    pub fn new(id: i32, stream: T) -> Self {
         Self {
+            id,
             stream,
             buf: Vec::with_capacity(4096),
         }
     }
+}
 
+impl<T: Unpin + AsyncRead> PacketStream<T> {
     pub async fn recv(&mut self) -> Result<Payload> {
         let mut hdrbuf = [0u8; Header::SIZE];
         self.stream.read_exact(&mut hdrbuf).await?;
@@ -46,7 +48,9 @@ impl PacketStream {
         trace!("{self}: got payload: {:x?}", slice);
         Ok(Payload::decode(&hdr, slice)?)
     }
+}
 
+impl<T: Unpin + AsyncWrite> PacketStream<T> {
     pub async fn send(&mut self, pkt: &Payload) -> Result<()> {
         self.buf.clear();
         let len = pkt.encode(&mut self.buf)?;

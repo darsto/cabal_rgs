@@ -6,6 +6,7 @@ use packet::Payload;
 use server::packet_stream::PacketStream;
 
 use std::net::{TcpListener, TcpStream};
+use std::os::fd::AsRawFd;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -33,7 +34,8 @@ async fn connect_timeout() -> std::io::Result<Async<TcpStream>> {
 }
 
 async fn start_client_test() {
-    let mut conn = PacketStream::new(connect_timeout().await.unwrap());
+    let stream = connect_timeout().await.unwrap();
+    let mut conn = PacketStream::new(stream.as_raw_fd(), stream);
 
     let world_id = 1;
     let channel_id = 1;

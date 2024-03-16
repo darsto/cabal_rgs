@@ -9,6 +9,7 @@ use packet::*;
 use rand::Rng;
 use std::cell::OnceCell;
 use std::fmt::Display;
+use std::net::TcpStream;
 use std::os::fd::AsRawFd;
 use std::{net::TcpListener, sync::Arc};
 
@@ -48,7 +49,7 @@ impl Listener {
 
             let conn = Connection {
                 id: stream.as_raw_fd(),
-                stream: PacketStream::new(stream),
+                stream: PacketStream::new(stream.as_raw_fd(), stream),
                 shortkey: OnceCell::new(),
                 args: self.args.clone(),
             };
@@ -78,7 +79,7 @@ fn xor_blocks_mut(blocks: &mut [Block]) {
 
 pub struct Connection {
     pub id: i32,
-    pub stream: PacketStream,
+    pub stream: PacketStream<Async<TcpStream>>,
     pub shortkey: OnceCell<aria::Key>,
     pub args: Arc<crate::args::Config>,
 }

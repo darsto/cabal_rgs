@@ -7,6 +7,7 @@ use packet::{Block, Payload};
 use server::packet_stream::PacketStream;
 
 use std::net::{TcpListener, TcpStream};
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -51,7 +52,8 @@ fn xor_block(mut block: Block) -> Block {
 }
 
 async fn start_client_test() {
-    let mut conn = PacketStream::new(connect_timeout().await.unwrap());
+    let stream = connect_timeout().await.unwrap();
+    let mut conn = PacketStream::new(stream.as_raw_fd(), stream);
 
     let hello = packet::crypto_mgr::Connect {
         unk1: 0xf6,
