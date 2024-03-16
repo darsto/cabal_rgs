@@ -5,6 +5,7 @@ use aria::{BlockExt, BlockSlice};
 use log::{info, trace};
 use packet::{Block, Payload};
 use server::packet_stream::PacketStream;
+use server::ThreadLocalExecutor;
 
 use std::net::{TcpListener, TcpStream};
 use std::os::fd::AsRawFd;
@@ -187,7 +188,7 @@ async fn start_server() -> Result<()> {
         .expect("Cannot bind to 32001");
     let args = Arc::new(server::args::Config {
         services: vec![server::args::Service::CryptoMgr],
-        resources_dir: PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()),
+        resources_dir: PathBuf::from(env!("CARGO_MANIFEST_DIR")),
         ..Default::default()
     });
 
@@ -198,10 +199,12 @@ async fn start_server() -> Result<()> {
 #[test]
 fn basic_crypto_mgr() {
     server::setup_log(true);
-    smol::block_on(async {
-        let server_t = smol::spawn(start_server());
+
+    let ex = ThreadLocalExecutor::new().unwrap();
+    futures::executor::block_on(ex.run(async {
+        let server_t = ex.spawn(start_server());
         let client_f = start_client_test();
         client_f.await;
         server_t.cancel().await;
-    });
+    }));
 }

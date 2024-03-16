@@ -4,6 +4,7 @@
 use log::{info, trace};
 use packet::Payload;
 use server::packet_stream::PacketStream;
+use server::ThreadLocalExecutor;
 
 use std::net::{TcpListener, TcpStream};
 use std::os::fd::AsRawFd;
@@ -94,10 +95,12 @@ async fn start_server() -> Result<()> {
 #[test]
 fn basic_event_mgr() {
     server::setup_log(true);
-    smol::block_on(async {
-        let server_t = smol::spawn(start_server());
+
+    let ex = ThreadLocalExecutor::new().unwrap();
+    futures::executor::block_on(ex.run(async {
+        let server_t = ex.spawn(start_server());
         let client_f = start_client_test();
         client_f.await;
         server_t.cancel().await;
-    });
+    }));
 }

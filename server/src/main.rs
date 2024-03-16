@@ -5,8 +5,8 @@
 // Everything else is in lib.rs so it can be unit tested.
 
 use clap::Parser;
-use futures::try_join;
-use server::setup_log;
+use futures::future;
+use server::{setup_log, ThreadLocalExecutor};
 use smol::Async;
 use std::{net::TcpListener, sync::Arc};
 
@@ -27,7 +27,10 @@ fn main() {
         .expect("Cannot bind to 32001");
     let mut crypto_mgr_listener = server::crypto_mgr::Listener::new(sock, args.clone());
 
-    smol::block_on(async move {
-        try_join!(event_mgr_listener.listen(), crypto_mgr_listener.listen()).unwrap();
-    });
+    let async_ex = ThreadLocalExecutor::new().unwrap();
+    async_ex.spawn(event_mgr_listener.listen()).detach();
+    async_ex.spawn(crypto_mgr_listener.listen()).detach();
+
+    futures::executor::block_on(async_ex.run(future::pending::<()>()));
+    // this never returns
 }

@@ -2,6 +2,7 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use crate::packet_stream::PacketStream;
+use crate::ThreadLocalExecutor;
 use log::{error, info, trace};
 use packet::*;
 
@@ -50,15 +51,17 @@ impl Listener {
             };
 
             // Give the connection handler its own background task
-            smol::spawn(async move {
-                let id = conn.id;
-                info!("Listener: new connection #{id}");
-                if let Err(err) = conn.handle().await {
-                    error!("Listener: connection #{id} error: {err}");
-                }
-                info!("Listener: closing connection #{id}");
-            })
-            .detach();
+            ThreadLocalExecutor::get()
+                .unwrap()
+                .spawn(async move {
+                    let id = conn.id;
+                    info!("Listener: new connection #{id}");
+                    if let Err(err) = conn.handle().await {
+                        error!("Listener: connection #{id} error: {err}");
+                    }
+                    info!("Listener: closing connection #{id}");
+                })
+                .detach();
             // for now the tasks are just dropped, but we might want to
             // wait for them in the future (or send a special shutdown
             // message in each connection)
