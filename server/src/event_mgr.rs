@@ -19,24 +19,18 @@ pub struct Args {}
 
 pub struct Listener {
     tcp_listener: Async<TcpListener>,
-    args: Arc<crate::args::Config>,
+    _args: Arc<crate::args::Config>,
 }
 
 impl Listener {
     pub fn new(tcp_listener: Async<TcpListener>, args: Arc<crate::args::Config>) -> Self {
-        Self { tcp_listener, args }
+        Self {
+            tcp_listener,
+            _args: args,
+        }
     }
 
     pub async fn listen(&mut self) -> Result<()> {
-        if !self
-            .args
-            .services
-            .iter()
-            .any(|f| *f == crate::args::Service::EventMgr)
-        {
-            return Ok(());
-        }
-
         info!(
             "Listener: started on {}",
             self.tcp_listener.get_ref().local_addr()?

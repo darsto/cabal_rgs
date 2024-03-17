@@ -31,15 +31,6 @@ impl Listener {
     }
 
     pub async fn listen(&mut self) -> Result<()> {
-        if !self
-            .args
-            .services
-            .iter()
-            .any(|f| *f == crate::args::Service::CryptoMgr)
-        {
-            return Ok(());
-        }
-
         info!(
             "Listener: started on {}",
             self.tcp_listener.get_ref().local_addr()?
