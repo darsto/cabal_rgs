@@ -4,6 +4,7 @@
 use crate::packet_stream::PacketStream;
 use crate::ThreadLocalExecutor;
 use aria::BlockExt;
+use clap::Parser;
 use log::{debug, error, info, trace};
 use packet::*;
 
@@ -17,8 +18,8 @@ use std::{net::TcpListener, sync::Arc};
 use anyhow::{bail, Context, Result};
 use smol::Async;
 
-#[derive(clap::Parser, Debug, Default)]
-pub struct Args {}
+#[derive(Parser, Debug)]
+pub struct CryptoArgs {}
 
 pub struct Listener {
     tcp_listener: Async<TcpListener>,
@@ -26,8 +27,11 @@ pub struct Listener {
 }
 
 impl Listener {
-    pub fn new(tcp_listener: Async<TcpListener>, args: Arc<crate::args::Config>) -> Self {
-        Self { tcp_listener, args }
+    pub fn new(tcp_listener: Async<TcpListener>, args: &Arc<crate::args::Config>) -> Self {
+        Self {
+            tcp_listener,
+            args: args.clone(),
+        }
     }
 
     pub async fn listen(&mut self) -> Result<()> {
@@ -208,6 +212,7 @@ impl Connection {
 
         let path = self
             .args
+            .common
             .resources_dir
             .join("resources/esym")
             .join(req.srchash.0)

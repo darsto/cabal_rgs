@@ -38,9 +38,7 @@ impl Listener {
 
         loop {
             let (upstream, _) = self.tcp_listener.accept().await?;
-            let downstream =
-                Async::<TcpStream>::connect(([10, 2, 0, 143], self.args.proxy_args.conn_port))
-                    .await?;
+            let downstream = Async::<TcpStream>::connect(([10, 2, 0, 143], 333)).await?;
             let upstream_id = upstream.as_raw_fd();
             let downstream_id = downstream.as_raw_fd();
 

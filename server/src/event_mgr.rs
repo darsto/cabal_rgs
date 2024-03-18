@@ -3,6 +3,7 @@
 
 use crate::packet_stream::PacketStream;
 use crate::ThreadLocalExecutor;
+use clap::Parser;
 use log::{error, info, trace};
 use packet::*;
 
@@ -14,8 +15,8 @@ use std::{net::TcpListener, sync::Arc};
 use anyhow::{bail, Result};
 use smol::Async;
 
-#[derive(clap::Parser, Debug, Default)]
-pub struct Args {}
+#[derive(Parser, Debug)]
+pub struct EventArgs {}
 
 pub struct Listener {
     tcp_listener: Async<TcpListener>,
@@ -23,10 +24,10 @@ pub struct Listener {
 }
 
 impl Listener {
-    pub fn new(tcp_listener: Async<TcpListener>, args: Arc<crate::args::Config>) -> Self {
+    pub fn new(tcp_listener: Async<TcpListener>, args: &Arc<crate::args::Config>) -> Self {
         Self {
             tcp_listener,
-            _args: args,
+            _args: args.clone(),
         }
     }
 
