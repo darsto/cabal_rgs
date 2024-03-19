@@ -10,29 +10,27 @@ use clap::{Parser, Subcommand, ValueEnum};
 #[clap(rename_all = "kebab_case")]
 enum ServiceConfigArg {
     /// RockAndRoll equivalent
-    CryptoMgr,
+    Crypto,
     /// EventMgr equivalent
-    EventMgr,
+    Event,
     Proxy,
 }
 
 /// A service configuration
 #[derive(Debug)]
 pub enum Service {
-    CryptoMgr(crate::crypto_mgr::CryptoArgs),
-    EventMgr(crate::event_mgr::EventArgs),
-    ProxyMgr,
+    Crypto(crate::crypto_mgr::CryptoArgs),
+    Event(crate::event_mgr::EventArgs),
+    Proxy,
 }
 
 impl Service {
     fn parse_from_args(stype: ServiceConfigArg, args: std::slice::Iter<String>) -> Self {
         match stype {
-            ServiceConfigArg::CryptoMgr => {
-                Self::CryptoMgr(crate::crypto_mgr::CryptoArgs::parse_from(args))
+            ServiceConfigArg::Crypto => {
+                Self::Crypto(crate::crypto_mgr::CryptoArgs::parse_from(args))
             }
-            ServiceConfigArg::EventMgr => {
-                Self::EventMgr(crate::event_mgr::EventArgs::parse_from(args))
-            }
+            ServiceConfigArg::Event => Self::Event(crate::event_mgr::EventArgs::parse_from(args)),
             ServiceConfigArg::Proxy => todo!(),
         }
     }
@@ -63,7 +61,7 @@ pub struct CommonConfig {
 #[command(subcommand_help_heading = "Services")]
 #[command(disable_help_subcommand = true)]
 #[command(after_long_help = "\x1b[1;4mExamples:\x1b[0m\n\
-\x20\x20./cabal_mgr -s crypto-mgr --service event-mgr")]
+\x20\x20./cabal_mgr -s crypto --service event")]
 struct Args {
     #[command(subcommand)]
     service: ServiceConfigArg,
@@ -107,7 +105,7 @@ pub fn parse_from(args: &[String]) -> Config {
                 // this is the first -s we see, so parse the previous args
                 // as common, generic args
                 let full_cfg =
-                    Args::parse_from(args.iter().take(idx).chain(["crypto-mgr".into()].iter()));
+                    Args::parse_from(args.iter().take(idx).chain(["crypto".into()].iter()));
                 common_cfg = Some(full_cfg.common);
             }
 

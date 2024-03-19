@@ -186,7 +186,7 @@ async fn start_client_test() {
 async fn start_server() -> Result<()> {
     let tcp_listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 32001)) //
         .expect("Cannot bind to 32001");
-    let mut args = server::args::parse_from_str("-s crypto-mgr");
+    let mut args = server::args::parse_from_str("-s crypto");
     args.common.resources_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut listener = server::crypto_mgr::Listener::new(tcp_listener, &Arc::new(args));
     listener.listen().await

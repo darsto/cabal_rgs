@@ -19,7 +19,7 @@ fn main() {
     if args
         .services
         .iter()
-        .any(|f| matches!(f, server::args::Service::EventMgr { .. }))
+        .any(|f| matches!(f, server::args::Service::Event { .. }))
     {
         let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 38171)) //
             .expect("Cannot bind to 38171");
@@ -32,7 +32,7 @@ fn main() {
     if !args
         .services
         .iter()
-        .any(|f| matches!(f, server::args::Service::CryptoMgr { .. }))
+        .any(|f| matches!(f, server::args::Service::Crypto { .. }))
     {
         let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 32001)) //
             .expect("Cannot bind to 32001");

@@ -85,7 +85,7 @@ async fn start_server() -> Result<()> {
     let tcp_listener = Async::<TcpListener>::bind(([127, 0, 0, 1], 38171)) //
         .expect("Cannot bind to 38171");
 
-    let mut args = server::args::parse_from_str("-s event-mgr");
+    let mut args = server::args::parse_from_str("-s event");
     args.common.resources_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut listener = server::event_mgr::Listener::new(tcp_listener, &Arc::new(args));
     listener.listen().await
