@@ -17,9 +17,9 @@ use genmatch::*;
 use thiserror::Error;
 
 pub mod common;
-pub mod crypto_mgr;
-pub mod event_mgr;
-pub mod global_mgr;
+pub mod pkt_crypto;
+pub mod pkt_event;
+pub mod pkt_global;
 
 mod helper_types;
 pub use helper_types::*;
@@ -33,17 +33,17 @@ pub enum Payload {
     ConnectAck(common::ConnectAck),
 
     /* Event Manager packets */
-    Keepalive(event_mgr::Keepalive),
+    Keepalive(pkt_event::Keepalive),
 
     /* Crypto Manager packets */
-    EncryptKey2Request(crypto_mgr::EncryptKey2Request),
-    EncryptKey2Response(crypto_mgr::EncryptKey2Response),
-    KeyAuthRequest(crypto_mgr::KeyAuthRequest),
-    KeyAuthResponse(crypto_mgr::KeyAuthResponse),
-    ESYM(crypto_mgr::ESYM),
+    EncryptKey2Request(pkt_crypto::EncryptKey2Request),
+    EncryptKey2Response(pkt_crypto::EncryptKey2Response),
+    KeyAuthRequest(pkt_crypto::KeyAuthRequest),
+    KeyAuthResponse(pkt_crypto::KeyAuthResponse),
+    ESYM(pkt_crypto::ESYM),
 
     /* Global Manager packets */
-    ServerState(global_mgr::ServerState),
+    ServerState(pkt_global::ServerState),
 }
 
 #[derive(Debug, PartialEq, Encode, Decode)]

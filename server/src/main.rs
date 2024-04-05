@@ -23,7 +23,7 @@ fn main() {
     {
         let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 38171)) //
             .expect("Cannot bind to 38171");
-        let mut event_mgr_listener = server::event_mgr::Listener::new(sock, &args);
+        let mut event_mgr_listener = server::event::Listener::new(sock, &args);
         async_ex
             .spawn(async move { event_mgr_listener.listen().await })
             .detach();
@@ -36,7 +36,7 @@ fn main() {
     {
         let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 32001)) //
             .expect("Cannot bind to 32001");
-        let mut crypto_mgr_listener = server::crypto_mgr::Listener::new(sock, &args);
+        let mut crypto_mgr_listener = server::crypto::Listener::new(sock, &args);
         async_ex
             .spawn(async move { crypto_mgr_listener.listen().await })
             .detach();

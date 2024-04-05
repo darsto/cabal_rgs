@@ -19,8 +19,8 @@ enum ServiceConfigArg {
 /// A service configuration
 #[derive(Debug)]
 pub enum Service {
-    Crypto(crate::crypto_mgr::CryptoArgs),
-    Event(crate::event_mgr::EventArgs),
+    Crypto(crate::crypto::CryptoArgs),
+    Event(crate::event::EventArgs),
     Proxy(crate::proxy::ProxyArgs),
 }
 
@@ -28,9 +28,9 @@ impl Service {
     fn parse_from_args(stype: ServiceConfigArg, args: std::slice::Iter<String>) -> Self {
         match stype {
             ServiceConfigArg::Crypto => {
-                Self::Crypto(crate::crypto_mgr::CryptoArgs::parse_from(args))
+                Self::Crypto(crate::crypto::CryptoArgs::parse_from(args))
             }
-            ServiceConfigArg::Event => Self::Event(crate::event_mgr::EventArgs::parse_from(args)),
+            ServiceConfigArg::Event => Self::Event(crate::event::EventArgs::parse_from(args)),
             ServiceConfigArg::Proxy => Self::Proxy(crate::proxy::ProxyArgs::parse_from(args)),
         }
     }

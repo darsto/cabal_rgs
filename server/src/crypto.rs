@@ -89,7 +89,7 @@ impl Display for Connection {
 }
 
 impl Connection {
-    pub async fn handle_key_req(&mut self, mut req: crypto_mgr::EncryptKey2Request) -> Result<()> {
+    pub async fn handle_key_req(&mut self, mut req: pkt_crypto::EncryptKey2Request) -> Result<()> {
         debug!(
             "{self}: key req key_split_point (w/o xor) = {:#x}",
             req.key_split_point
@@ -122,14 +122,14 @@ impl Connection {
 
         debug!("{self}: sent shortkey={:x?}", &shortkey.as_bytes()[0..8]);
         let shortkey = &shortkey.as_bytes()[0..9];
-        let r = Payload::EncryptKey2Response(crypto_mgr::EncryptKey2Response {
+        let r = Payload::EncryptKey2Response(pkt_crypto::EncryptKey2Response {
             key_split_point: req.key_split_point,
             shortkey: BoundVec(shortkey.iter().map(|b| b ^ 0xb3).collect()),
         });
         self.stream.send(&r).await
     }
 
-    pub async fn handle_auth_req(&mut self, mut req: crypto_mgr::KeyAuthRequest) -> Result<()> {
+    pub async fn handle_auth_req(&mut self, mut req: pkt_crypto::KeyAuthRequest) -> Result<()> {
         req.xor_port ^= 0x1f398ab3;
         debug!("{self}: auth req xor_port = {}", req.xor_port);
 
@@ -181,7 +181,7 @@ impl Connection {
         enc_warp.iter_mut().for_each(|b| enckey.encrypt_mut(b));
         xor_blocks_mut(&mut enc_warp);
 
-        let r = Payload::KeyAuthResponse(crypto_mgr::KeyAuthResponse {
+        let r = Payload::KeyAuthResponse(pkt_crypto::KeyAuthResponse {
             unk1: 0x1,
             xor_unk2: 0x03010101 ^ 0x1f398ab3,
             ip_local,
@@ -196,8 +196,8 @@ impl Connection {
         self.stream.send(&r).await
     }
 
-    pub async fn handle_esym(&mut self, esym: crypto_mgr::ESYM) -> Result<()> {
-        let (req, len) = bincode::decode_from_slice::<crypto_mgr::ESYMRequest, _>(
+    pub async fn handle_esym(&mut self, esym: pkt_crypto::ESYM) -> Result<()> {
+        let (req, len) = bincode::decode_from_slice::<pkt_crypto::ESYMRequest, _>(
             esym.bytes.0.as_slice(),
             bincode::config::legacy(),
         )?;
@@ -219,7 +219,7 @@ impl Connection {
             .with_extension("esym");
         let data = std::fs::read(&path).with_context(|| format!("cannot read {path:?}"))?;
 
-        let r = crypto_mgr::ESYMResponse {
+        let r = pkt_crypto::ESYMResponse {
             unk1: 0x1,
             filesize: data.len() as u32,
             esym: BoundVec(data),
@@ -227,7 +227,7 @@ impl Connection {
 
         let mut bytes = BoundVec(vec![]);
         bincode::encode_into_std_write(r, &mut bytes.0, bincode::config::legacy())?;
-        let r = Payload::ESYM(crypto_mgr::ESYM { bytes });
+        let r = Payload::ESYM(pkt_crypto::ESYM { bytes });
         self.stream.send(&r).await
     }
 
@@ -236,14 +236,14 @@ impl Connection {
         let Payload::Connect(hello) = &p else {
             bail!("{self}: Expected Connect packet, got {p:?}");
         };
-        let hello = packet::crypto_mgr::Connect::try_from(hello)?;
+        let hello = packet::pkt_crypto::Connect::try_from(hello)?;
 
         assert_eq!(hello.unk1, 0xf6);
         assert_eq!(hello.world_id, 0xfd);
 
         trace!("{self}: Got hello: {p:?}");
 
-        let ack = packet::crypto_mgr::ConnectAck {
+        let ack = packet::pkt_crypto::ConnectAck {
             unk1: 0x0,
             unk2: [0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00],
             unk3: 0xf6,

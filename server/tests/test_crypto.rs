@@ -56,7 +56,7 @@ async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
     let mut conn = PacketStream::new(stream.as_raw_fd(), stream);
 
-    let hello = packet::crypto_mgr::Connect {
+    let hello = packet::pkt_crypto::Connect {
         unk1: 0xf6,
         world_id: 0xfd,
         channel_id: 0x0,
@@ -73,7 +73,7 @@ async fn start_client_test() {
     let Payload::ConnectAck(ack) = p else {
         panic!("{PREFIX}: Expected ConnectAck packet, got {p:?}");
     };
-    let ack = packet::crypto_mgr::ConnectAck::try_from(ack).unwrap();
+    let ack = packet::pkt_crypto::ConnectAck::try_from(ack).unwrap();
 
     assert_eq!(ack.unk1, 0x0);
     assert_eq!(ack.unk2, [0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00]);
@@ -85,7 +85,7 @@ async fn start_client_test() {
     trace!("{PREFIX}: Ack received!");
     trace!("{PREFIX}: Sending Key Request ...");
 
-    let req = Payload::EncryptKey2Request(packet::crypto_mgr::EncryptKey2Request {
+    let req = Payload::EncryptKey2Request(packet::pkt_crypto::EncryptKey2Request {
         key_split_point: 0x1 ^ 0x1f398ab3,
     });
     conn.send(&req).await.unwrap();
@@ -113,7 +113,7 @@ async fn start_client_test() {
     let enckey = key.expand();
     let deckey = aria::DecryptKey::from(enckey.clone());
 
-    let req = packet::crypto_mgr::KeyAuthRequest {
+    let req = packet::pkt_crypto::KeyAuthRequest {
         unk1: 0x0,
         unk2: 0x0,
         netmask: xor_block(enckey.encrypt(Block::new("255.255.255.127"))),
@@ -159,7 +159,7 @@ async fn start_client_test() {
     trace!("{PREFIX}: Response received");
     trace!("{PREFIX}: Sending ESYM Request ...");
 
-    let req = packet::crypto_mgr::ESYMRequest {
+    let req = packet::pkt_crypto::ESYMRequest {
         unk1: 0x0,
         nation: "BRA".into(),
         srchash: "f2b76e1ee8a92a8ce99a41c07926d3f3".into(),
@@ -176,7 +176,7 @@ async fn start_client_test() {
         panic!("{PREFIX}: Expected KeyAuthResponse packet, got {p:?}");
     };
 
-    let resp = packet::crypto_mgr::ESYMResponse::try_from(resp).unwrap();
+    let resp = packet::pkt_crypto::ESYMResponse::try_from(resp).unwrap();
     trace!("{PREFIX}: ESYM resp length: {}", resp.filesize);
     trace!("{PREFIX}: Reponse received");
 
@@ -188,7 +188,7 @@ async fn start_server() -> Result<()> {
         .expect("Cannot bind to 32001");
     let mut args = server::args::parse_from_str("-s crypto");
     args.common.resources_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let mut listener = server::crypto_mgr::Listener::new(tcp_listener, &Arc::new(args));
+    let mut listener = server::crypto::Listener::new(tcp_listener, &Arc::new(args));
     listener.listen().await
 }
 

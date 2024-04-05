@@ -42,7 +42,7 @@ async fn start_client_test() {
     let world_id = 1;
     let channel_id = 1;
 
-    let hello = packet::event_mgr::Connect {
+    let hello = packet::pkt_event::Connect {
         unk1: 0x0,
         world_id,
         channel_id,
@@ -58,7 +58,7 @@ async fn start_client_test() {
     let Payload::ConnectAck(ack) = &p else {
         panic!("Expected ConnectAck packet, got {p:?}");
     };
-    let ack = packet::event_mgr::ConnectAck::try_from(ack).unwrap();
+    let ack = packet::pkt_event::ConnectAck::try_from(ack).unwrap();
     assert_eq!(ack.unk1, 0x0);
     assert_eq!(
         ack.unk2,
@@ -71,7 +71,7 @@ async fn start_client_test() {
     trace!("{PREFIX}: Ack received!");
     trace!("{PREFIX}: Sending Keepalive!");
 
-    let keepalive = Payload::Keepalive(packet::event_mgr::Keepalive {});
+    let keepalive = Payload::Keepalive(packet::pkt_event::Keepalive {});
     conn.send(&keepalive).await.unwrap();
 
     // make sure the connection wasn't terminated
@@ -87,7 +87,7 @@ async fn start_server() -> Result<()> {
 
     let mut args = server::args::parse_from_str("-s event");
     args.common.resources_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let mut listener = server::event_mgr::Listener::new(tcp_listener, &Arc::new(args));
+    let mut listener = server::event::Listener::new(tcp_listener, &Arc::new(args));
     listener.listen().await
 }
 
