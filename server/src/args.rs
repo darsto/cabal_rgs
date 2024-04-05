@@ -21,7 +21,7 @@ enum ServiceConfigArg {
 pub enum Service {
     Crypto(crate::crypto_mgr::CryptoArgs),
     Event(crate::event_mgr::EventArgs),
-    Proxy,
+    Proxy(crate::proxy::ProxyArgs),
 }
 
 impl Service {
@@ -31,7 +31,7 @@ impl Service {
                 Self::Crypto(crate::crypto_mgr::CryptoArgs::parse_from(args))
             }
             ServiceConfigArg::Event => Self::Event(crate::event_mgr::EventArgs::parse_from(args)),
-            ServiceConfigArg::Proxy => todo!(),
+            ServiceConfigArg::Proxy => Self::Proxy(crate::proxy::ProxyArgs::parse_from(args)),
         }
     }
 }

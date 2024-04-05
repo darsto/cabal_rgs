@@ -3,6 +3,7 @@
 
 use crate::packet_stream::PacketStream;
 use crate::ThreadLocalExecutor;
+use clap::Parser;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use log::{error, info, trace};
 
@@ -14,10 +15,12 @@ use std::{net::TcpListener, sync::Arc};
 use anyhow::Result;
 use smol::Async;
 
-#[derive(clap::Parser, Debug, Default)]
+#[derive(Parser, Debug, Default)]
 pub struct ProxyArgs {
     #[clap(short = 'p', long = "port")]
-    conn_port: u16,
+    pub upstream_port: u16,
+    #[clap(short = 'p', long = "port")]
+    pub downstream_port: u16,
 }
 
 pub struct Listener {
@@ -26,8 +29,8 @@ pub struct Listener {
 }
 
 impl Listener {
-    pub fn new(tcp_listener: Async<TcpListener>, args: Arc<crate::args::Config>) -> Self {
-        Self { tcp_listener, args }
+    pub fn new(tcp_listener: Async<TcpListener>, args: &Arc<crate::args::Config>) -> Self {
+        Self { tcp_listener, args: args.clone() }
     }
 
     pub async fn listen(&mut self) -> Result<()> {
@@ -35,10 +38,21 @@ impl Listener {
             "Listener: started on {}",
             self.tcp_listener.get_ref().local_addr()?
         );
+        let proxyargs = self.args
+            .services
+            .iter()
+            .find_map(|s| {
+                if let crate::args::Service::Proxy(args) = s {
+                    Some(args)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
 
         loop {
             let (upstream, _) = self.tcp_listener.accept().await?;
-            let downstream = Async::<TcpStream>::connect(([10, 2, 0, 143], 333)).await?;
+            let downstream = Async::<TcpStream>::connect(([127, 0, 0, 1], proxyargs.downstream_port)).await?;
             let upstream_id = upstream.as_raw_fd();
             let downstream_id = downstream.as_raw_fd();
 
