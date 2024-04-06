@@ -30,7 +30,10 @@ pub struct Listener {
 
 impl Listener {
     pub fn new(tcp_listener: Async<TcpListener>, args: &Arc<crate::args::Config>) -> Self {
-        Self { tcp_listener, args: args.clone() }
+        Self {
+            tcp_listener,
+            args: args.clone(),
+        }
     }
 
     pub async fn listen(&mut self) -> Result<()> {
@@ -38,7 +41,8 @@ impl Listener {
             "Listener: started on {}",
             self.tcp_listener.get_ref().local_addr()?
         );
-        let proxyargs = self.args
+        let proxyargs = self
+            .args
             .services
             .iter()
             .find_map(|s| {
@@ -52,7 +56,8 @@ impl Listener {
 
         loop {
             let (upstream, _) = self.tcp_listener.accept().await?;
-            let downstream = Async::<TcpStream>::connect(([127, 0, 0, 1], proxyargs.downstream_port)).await?;
+            let downstream =
+                Async::<TcpStream>::connect(([127, 0, 0, 1], proxyargs.downstream_port)).await?;
             let upstream_id = upstream.as_raw_fd();
             let downstream_id = downstream.as_raw_fd();
 
