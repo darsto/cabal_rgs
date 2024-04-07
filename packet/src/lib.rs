@@ -43,7 +43,28 @@ pub enum Payload {
     ESYM(pkt_crypto::ESYM),
 
     /* Global Manager packets */
+    RegisterChatSvr(pkt_global::RegisterChatSvr),
+    ChangeServerState(pkt_global::ChangeServerState),
+    ChangeChannelType(pkt_global::ChangeChannelType),
+    ClientVersionNotify(pkt_global::ClientVersionNotify),
+    DailyQuestResetTime(pkt_global::DailyQuestResetTime),
+    AdditionalDungeonInstanceCount(pkt_global::AdditionalDungeonInstanceCount),
+    SystemMessage(pkt_global::SystemMessage),
+    SystemMessageResult(pkt_global::SystemMessageResult),
+    NotifyUserCount(pkt_global::NotifyUserCount),
     ServerState(pkt_global::ServerState),
+    ProfilePathRequest(pkt_global::ProfilePathRequest),
+    ProfilePathResponse(pkt_global::ProfilePathResponse),
+    RoutePacket(pkt_global::RoutePacket),
+    ShutdownStatsSet(pkt_global::ShutdownStatsSet),
+    ChannelOptionSync(pkt_global::ChannelOptionSync),
+    VerifyLinks(pkt_global::VerifyLinks),
+    VerifyLinksResult(pkt_global::VerifyLinksResult),
+    SetLoginInstance(pkt_global::SetLoginInstance),
+    SubPasswordCheckRequest(pkt_global::SubPasswordCheckRequest),
+    SubPasswordCheckResponse(pkt_global::SubPasswordCheckResponse),
+    MultipleLoginDisconnectRequest(pkt_global::MultipleLoginDisconnectRequest),
+    MultipleLoginDisconnectResponse(pkt_global::MultipleLoginDisconnectResponse),
 }
 
 #[derive(Debug, PartialEq, Encode, Decode)]

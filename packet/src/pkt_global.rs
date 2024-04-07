@@ -29,6 +29,38 @@ pub struct Connect {
 assert_def_packet_size!(Connect, 4);
 packet_alias!(Connect, common::Connect);
 
+#[packet(0x50)]
+pub struct RegisterChatSvr {
+    server_id: u8,  // 1?
+    channel_id: u8, // 1?
+    chattype: u8,   // always 0xfa = chatnode
+    unk1: u8,       // 0?
+    port: u16,      // e.g. 0x94e9 = 38121
+}
+assert_def_packet_size!(RegisterChatSvr, 6);
+
+pub enum ServerStateEnum {
+    Disabled = 0x0, // can't connect
+    Green = 0x1,    // low population
+    Orange = 0x2,   // medium population
+    Red = 0x3,      // population full
+}
+
+#[packet(0x62)]
+pub struct ChangeServerState {
+    server_id: u8,
+    channel_id: u8,
+    state: u32,
+}
+assert_def_packet_size!(ChangeServerState, 6);
+
+#[packet(0x63)]
+pub struct ChangeChannelType {
+    server_id: u8,
+    channel_id: u8,
+    state: u32,
+}
+
 #[packet(0xc3e)]
 pub struct ClientVersionNotify {
     version: u32,  // can be zero (-> ignore?)
@@ -56,23 +88,26 @@ pub struct RouteHeader {
     server_id: u8,
     group_id: u8,
     world_id: u8,
-    process_id: u8,
+    process_id: u8, // ?? 0?
 }
 
 #[packet(0x15)]
 pub struct SystemMessage {
     route_hdr: RouteHeader,
-    user_num: u32, // ?
-    unk1: u16,     // ?
-    // off 0x16
-    unk2: u32, // user_ip?
-    // off 0x1a
+    unk0: u32,    // 0?
+    unk1: u16,    // 0?
+    unk2: u32,    // 1?
     msg_type: u8, // 0,1,2,3? or 9...
-    unk3: u16,
+    aux: BoundVec<1, u8>,
+    // there might be 1 trailing byte
+    trailing: BoundVec<0, u8>,
 }
-assert_def_packet_size!(SystemMessage, 0x1d - Header::SIZE);
+assert_def_packet_size!(SystemMessage, 0x1d - 1 - Header::SIZE);
 
-//packet 0x16 - SystemMessageResp
+#[packet(0x16)]
+pub struct SystemMessageResult {
+    data: SystemMessage,
+}
 
 #[packet(0x34)]
 pub struct NotifyUserCount {
@@ -92,6 +127,8 @@ assert_def_packet_size!(NotifyUserCount, 0x1b4 - Header::SIZE);
 #[packet(0x35)]
 pub struct ServerState {
     servers: BoundVec<1, ServerNode>,
+    // the packet is usually sized way more than needed
+    trailing: BoundVec<0, u8>,
 }
 
 // must be 7 bytes!
@@ -141,10 +178,9 @@ pub struct ProfilePathResponse {
 }
 assert_def_packet_size!(ProfilePathResponse, 0x311 - Header::SIZE);
 
-#[packet(0x1a)]
-pub struct RoutePacket {
-    route_hdr: RouteHeader, // desired msg id non 0,
-    // 0x17 - special handling, no server_id/group_id checked
+#[packet]
+pub struct DuplexRouteHeader {
+    route_hdr: RouteHeader,
     unk1: u32,           // 2?
     unk2: u16,           // 0?
     unk3: u16,           // 0?
@@ -152,7 +188,80 @@ pub struct RoutePacket {
     resp_group_id: u8,   // 0x1?
     resp_world_id: u8,   // 0?
     resp_process_id: u8, // 0?
+}
+
+#[packet(0x1a)]
+pub struct RoutePacket {
+    droute_hdr: DuplexRouteHeader, // desired msg id non 0,
+    // 0x17 - special handling, no server_id/group_id checked
     data: BoundVec<0, u8>,
+}
+
+#[packet(0xc3f)]
+pub struct ShutdownStatsSet {
+    unk1: u32, // always 0?
+}
+
+#[packet(0xc76)]
+pub struct ChannelOptionSync {
+    unk1: u16, // 0?
+    unk2: u16, // 255?
+    unk3: u32, // [80, 0, 0, 0]? only the low 2 bytes are read -> 0
+    unk4: u32, // 5
+}
+
+#[packet(0x17)]
+pub struct VerifyLinks {
+    droute_hdr: DuplexRouteHeader,
+    unk: BoundVec<0, u8>,
+}
+
+#[packet(0x18)]
+pub struct VerifyLinksResult {
+    droute_hdr: DuplexRouteHeader,
+    unk1: u32, // 8?
+    unk2: u8,  // 226?
+}
+
+#[packet(0x1c)]
+pub struct SetLoginInstance {
+    user_id: u32,
+    unk1: u8, // 105?
+    login_time_mins: u32,
+    unk2: BoundVec<0, u8>,
+}
+
+#[packet(0x2dc)]
+pub struct SubPasswordCheckRequest {
+    unk1: u32, // 1?
+    ip: [u8; 17],
+    unk2: u32,          // 0x101?
+    login_counter: u32, // 0x8? 0x9? 0x10?
+    unk4: u32,          // 0x0?
+}
+
+#[packet(0x2dd)]
+pub struct SubPasswordCheckResponse {
+    unk1: u32,          // 1?
+    auth_needed: u32,   // 0 or 1
+    zeroes: [u8; 17],   // always zeroes...
+    unk2: u32,          // 0x65820101? next pass timestamp?
+    login_counter: u32, // 0x8? 0x9? 0x10?
+    unk4: u32,          // 0x0?
+}
+assert_def_packet_size!(SubPasswordCheckResponse, 0x2f - Header::SIZE);
+
+#[packet(0xc7c)]
+pub struct MultipleLoginDisconnectRequest {
+    unk1: u32,
+    unk2: u32,
+}
+// broadcasted to all world servers
+
+#[packet(0xc7d)]
+pub struct MultipleLoginDisconnectResponse {
+    unk1: u32,
+    unk2: u32,
 }
 
 #[cfg(test)]
