@@ -5,7 +5,7 @@ use futures::{AsyncRead, AsyncWrite};
 use log::trace;
 use packet::*;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use smol::io::{AsyncReadExt, AsyncWriteExt};
 use std::fmt::Display;
 
@@ -46,7 +46,8 @@ impl<T: Unpin + AsyncRead> PacketStream<T> {
 
         let slice = &self.buf[..];
         trace!("{self}: got payload: {:x?}", slice);
-        Ok(Payload::decode(&hdr, slice)?)
+        Payload::decode(&hdr, slice)
+            .map_err(|e| anyhow!("Can't decode packet {hdr:x?}: {e}\nPayload: {slice:x?}"))
     }
 }
 

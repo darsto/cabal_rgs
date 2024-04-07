@@ -91,13 +91,15 @@ pub enum HeaderDecodeError {
     )]
     InvalidMagic { found: u16 },
     #[error("Decoding failed ({0})")]
-    DecodeError(DecodeError),
+    DecodeError(#[from] DecodeError),
 }
 
-impl From<DecodeError> for HeaderDecodeError {
-    fn from(value: DecodeError) -> Self {
-        HeaderDecodeError::DecodeError(value)
-    }
+#[derive(Error, Debug)]
+pub enum PayloadDecodeError {
+    #[error("Packet is too long. Header specifies {len} bytes, but only {parsed} could be parsed")]
+    PacketTooLong { len: u16, parsed: u16 },
+    #[error("Decoding failed ({0})")]
+    DecodeError(#[from] DecodeError),
 }
 
 impl Payload {
@@ -106,10 +108,22 @@ impl Payload {
         EnumVariantType(EnumStructType::default())
     }
 
+    fn decode_raw_generic<D: bincode::de::Decode>(data: &[u8]) -> Result<D, PayloadDecodeError> {
+        let (obj, len) = bincode::decode_from_slice::<D, _>(data, config::legacy())?;
+        if len != data.len() {
+            return Err(PayloadDecodeError::PacketTooLong {
+                len: data.len() as u16,
+                parsed: len as u16,
+            });
+        }
+        Ok(obj)
+    }
+
     #[genmatch_id(Payload)]
-    pub fn decode_raw(data: &[u8], id: usize) -> Result<Payload, DecodeError> {
-        let (obj, _len) = bincode::decode_from_slice::<EnumStructType, _>(data, config::legacy())?;
-        Ok(EnumVariantType(obj))
+    pub fn decode_raw(data: &[u8], id: usize) -> Result<Payload, PayloadDecodeError> {
+        Ok(EnumVariantType(Self::decode_raw_generic::<EnumStructType>(
+            data,
+        )?))
     }
 
     fn encode_into_std_write<T: Encode>(
@@ -165,7 +179,7 @@ impl Payload {
         Ok(len as usize)
     }
 
-    pub fn decode(hdr: &Header, data: &[u8]) -> Result<Self, DecodeError> {
+    pub fn decode(hdr: &Header, data: &[u8]) -> Result<Self, PayloadDecodeError> {
         let payload = if Self::type_id(hdr.id as usize) == TypeId::of::<Unknown>() {
             let (data, _len) =
                 bincode::decode_from_slice::<UnknownPayload, _>(data, config::legacy())?;
