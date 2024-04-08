@@ -42,7 +42,7 @@ async fn start_client_test() {
     let world_id = 1;
     let channel_id = 1;
 
-    let hello = packet::pkt_event::Connect {
+    let hello = packet::pkt_common::Connect {
         unk1: 0x0,
         world_id,
         channel_id,

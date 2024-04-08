@@ -1,33 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2024 Darek Stojaczyk
 
-use num_derive::FromPrimitive;
 use packet_proc::packet;
 
 use crate::{assert_def_packet_size, BoundVec};
-
-#[derive(Debug, PartialEq, FromPrimitive)]
-#[repr(u8)]
-pub enum ServiceID {
-    WorldSvr = 0xa1,
-    LoginSvr = 0xc3,
-    DBAgent = 0xd4,
-    AgentShop = 0xe9,
-    EventNgr = 0xf5,
-    GlobalMgrSvr = 0xf6,
-    ChatNode = 0xfa,
-    RockNRoll = 0xfd,
-}
-
-#[packet(0x5)]
-pub struct Connect {
-    src_id: u8,
-    server_id: u8,
-    channel_id: u8,
-    unk2: u8,
-}
-assert_def_packet_size!(Connect, 4);
-packet_alias!(Connect, common::Connect);
 
 #[packet(0x50)]
 pub struct RegisterChatSvr {

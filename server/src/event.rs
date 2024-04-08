@@ -81,7 +81,6 @@ impl Connection {
         let Payload::Connect(hello) = &p else {
             bail!("{self}: Expected Connect packet, got {p:?}");
         };
-        let hello = packet::pkt_event::Connect::try_from(hello)?;
         let world_id = hello.world_id;
         let channel_id = hello.channel_id;
         trace!("{self}: Got hello: {p:?}");

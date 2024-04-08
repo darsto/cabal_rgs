@@ -236,7 +236,6 @@ impl Connection {
         let Payload::Connect(hello) = &p else {
             bail!("{self}: Expected Connect packet, got {p:?}");
         };
-        let hello = packet::pkt_crypto::Connect::try_from(hello)?;
 
         assert_eq!(hello.unk1, 0xf6);
         assert_eq!(hello.world_id, 0xfd);

@@ -12,11 +12,11 @@ use bincode::{
     error::{DecodeError, EncodeError},
     Decode, Encode,
 };
-use common::{Unknown, UnknownPayload};
 use genmatch::*;
+use pkt_common::{Unknown, UnknownPayload};
 use thiserror::Error;
 
-pub mod common;
+pub mod pkt_common;
 pub mod pkt_crypto;
 pub mod pkt_event;
 pub mod pkt_global;
@@ -28,9 +28,9 @@ pub use helper_types::*;
 #[derive(Debug)]
 pub enum Payload {
     #[attr(ID = _)]
-    Unknown(common::Unknown),
-    Connect(common::Connect),
-    ConnectAck(common::ConnectAck),
+    Unknown(pkt_common::Unknown),
+    Connect(pkt_common::Connect),
+    ConnectAck(pkt_common::ConnectAck),
 
     /* Event Manager packets */
     Keepalive(pkt_event::Keepalive),
@@ -214,7 +214,7 @@ impl Payload {
 
 impl Default for Payload {
     fn default() -> Self {
-        Payload::Unknown(common::Unknown::default())
+        Payload::Unknown(pkt_common::Unknown::default())
     }
 }
 
