@@ -3,6 +3,7 @@
 
 use aria::{BlockExt, BlockSlice};
 use log::{info, trace};
+use packet::pkt_common::ServiceID;
 use packet::{Block, Payload};
 use server::packet_stream::PacketStream;
 use server::ThreadLocalExecutor;
@@ -57,7 +58,7 @@ async fn start_client_test() {
     let mut conn = PacketStream::new(stream.as_raw_fd(), stream);
 
     let hello = packet::pkt_common::Connect {
-        unk1: 0xf6,
+        id: ServiceID::GlobalMgrSvr,
         world_id: 0xfd,
         channel_id: 0x0,
         unk2: 0x0,

@@ -7,6 +7,8 @@ extern crate syn;
 #[macro_use]
 extern crate quote;
 
+mod enum_parse;
+
 #[allow(clippy::from_str_radix_10)]
 fn parse_int(str: &str) -> Result<usize, std::num::ParseIntError> {
     if let Some(str) = str.strip_prefix("0x") {
@@ -64,4 +66,43 @@ pub fn packet(
     }
 
     ret_stream.into()
+}
+
+#[proc_macro_derive(PacketEnum)]
+pub fn derive_packet_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let enum_parse::EnumInfo { name, repr } = syn::parse_macro_input!(input);
+
+    quote! {
+        use bincode::enc::write::Writer;
+        use bincode::de::read::Reader;
+        impl bincode::Encode for #name
+        {
+            fn encode<E: bincode::enc::Encoder>(
+                &self,
+                encoder: &mut E,
+            ) -> std::result::Result<(), bincode::error::EncodeError> {
+                let val = #repr::from(self.clone());
+                encoder
+                    .writer()
+                    .write(&val.to_le_bytes())
+            }
+        }
+
+        impl bincode::Decode for #name {
+            fn decode<D: bincode::de::Decoder>(decoder: &mut D) -> std::result::Result<Self, bincode::error::DecodeError> {
+                let mut buf = [0u8; std::mem::size_of::<#repr>()];
+                decoder.reader().read(&mut buf)?;
+                let val = #repr::from_le_bytes(buf);
+
+                Self::try_from(val).map_err(|e| bincode::error::DecodeError::OtherString(format!("Cannot convert {val} to {}: {e}", stringify!(#name))))
+            }
+        }
+
+        impl<'a> bincode::BorrowDecode<'a> for #name
+        {
+            fn borrow_decode<D: bincode::de::BorrowDecoder<'a>>(_decoder: &mut D) -> Result<Self, bincode::error::DecodeError> {
+                unimplemented!();
+            }
+        }
+    }.into()
 }

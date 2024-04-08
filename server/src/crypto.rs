@@ -6,6 +6,7 @@ use crate::ThreadLocalExecutor;
 use aria::BlockExt;
 use clap::Parser;
 use log::{debug, error, info, trace};
+use packet::pkt_common::ServiceID;
 use packet::*;
 
 use rand::Rng;
@@ -237,7 +238,7 @@ impl Connection {
             bail!("{self}: Expected Connect packet, got {p:?}");
         };
 
-        assert_eq!(hello.unk1, 0xf6);
+        assert_eq!(hello.id, ServiceID::GlobalMgrSvr);
         assert_eq!(hello.world_id, 0xfd);
 
         trace!("{self}: Got hello: {p:?}");

@@ -2,6 +2,7 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use log::{info, trace};
+use packet::pkt_common::ServiceID;
 use packet::Payload;
 use server::packet_stream::PacketStream;
 use server::ThreadLocalExecutor;
@@ -43,7 +44,7 @@ async fn start_client_test() {
     let channel_id = 1;
 
     let hello = packet::pkt_common::Connect {
-        unk1: 0x0,
+        id: ServiceID::None,
         world_id,
         channel_id,
         unk2: 0x0,
