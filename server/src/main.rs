@@ -29,7 +29,7 @@ fn main() {
             .detach();
     }
 
-    if !args
+    if args
         .services
         .iter()
         .any(|f| matches!(f, server::args::Service::Crypto { .. }))
@@ -45,7 +45,7 @@ fn main() {
     if let Some(Service::Proxy(proxy)) = args
         .services
         .iter()
-        .find(|f| matches!(f, server::args::Service::Crypto { .. }))
+        .find(|f| matches!(f, server::args::Service::Proxy { .. }))
     {
         let sock =
             Async::<TcpListener>::bind(([127, 0, 0, 1], proxy.upstream_port)) //

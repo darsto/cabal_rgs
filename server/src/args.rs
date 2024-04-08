@@ -26,6 +26,11 @@ pub enum Service {
 
 impl Service {
     fn parse_from_args(stype: ServiceConfigArg, args: std::slice::Iter<String>) -> Self {
+        let prefix = [format!(
+            "{BIN_NAME} -s {}",
+            stype.to_possible_value().unwrap().get_name()
+        )];
+        let args = prefix.iter().chain(args);
         match stype {
             ServiceConfigArg::Crypto => Self::Crypto(crate::crypto::CryptoArgs::parse_from(args)),
             ServiceConfigArg::Event => Self::Event(crate::event::EventArgs::parse_from(args)),
@@ -49,17 +54,19 @@ pub struct CommonConfig {
 // We work around it by parsing the args string manually, and passing different parts
 // to different sub-parsers.
 
+static BIN_NAME: &str = "cabal-mgr";
+
 /// Cabal Online Replacement Services
 #[derive(Parser, Debug)]
 #[command(display_name = "cabal-mgr", bin_name = "cabal-mgr")]
 #[command(version, about, long_about, verbatim_doc_comment)]
 #[command(subcommand_value_name = "\x08 \n\
-\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20[-s|--service <SERVICE1> <SERVICE1_OPTIONS>]\n\
-\x20\x20\x20\x20\x20\x20\x20\x20\x20\x20[-s|--service <SERVICE2...>]\x1b")]
+\x20         [-s|--service <SERVICE1> <SERVICE1_OPTIONS>]\n\
+\x20         [-s|--service <SERVICE2...>]\x1b")]
 #[command(subcommand_help_heading = "Services")]
 #[command(disable_help_subcommand = true)]
 #[command(after_long_help = "\x1b[1;4mExamples:\x1b[0m\n\
-\x20\x20./cabal_mgr -s crypto --service event")]
+\x20 ./cabal_mgr -s crypto --service event")]
 struct Args {
     #[command(subcommand)]
     service: ServiceConfigArg,
@@ -96,7 +103,6 @@ pub fn parse_from(args: &[String]) -> Config {
             if let Some(cur_service) = cur_service {
                 // end collecting the args of the previous service and try to parse them
                 let service_args = &args[cur_service.0..idx];
-                println!("{:?} args: {:?}", cur_service.1, service_args); // TODO remove
                 let service_cfg = Service::parse_from_args(cur_service.1, service_args.iter());
                 services.push(service_cfg);
             } else {
@@ -121,21 +127,20 @@ pub fn parse_from(args: &[String]) -> Config {
 
     if let Some(cur_service) = cur_service {
         let service_args = &args[cur_service.0..args.len()];
-        println!("{:?} args: {:?}", cur_service.1, service_args); // TODO remove
         let service_cfg = Service::parse_from_args(cur_service.1, service_args.iter());
         services.push(service_cfg);
     } else {
-        // there were no services specified, so we should fail;
-        // but the user might be running --help or --version, or simply no arguments
-        // at all. just let clippy handle this
-        Args::parse_from(args.iter());
-        // in case the user passed a valid service name (without --service or -s),
-        // clippy will parse it correctly and won't terminate. We know there wasn't any
-        // --help or --version specified, and we should just complain about the unknown
-        // argument which is the service name - we let clippy do it by parsing just the
-        // common args now. This prints incomplete "Usage: " line, but a proper error
-        // message
-        CommonConfig::parse_from(args.iter());
+        // there were no services specified, so we should fail, but the user
+        // might have requested either --version or --help
+        for arg in args {
+            match arg.as_str() {
+                "-V" | "--version" | "-h" | "--help" => {
+                    Args::parse_from([BIN_NAME.to_owned(), arg.clone()].iter());
+                }
+                _ => {}
+            }
+        }
+        Args::parse_from([BIN_NAME.to_owned()].iter());
         unreachable!();
     }
 
