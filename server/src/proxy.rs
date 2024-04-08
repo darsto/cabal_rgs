@@ -15,11 +15,15 @@ use std::{net::TcpListener, sync::Arc};
 use anyhow::Result;
 use smol::Async;
 
+/// Man in the middle for any cabal service serving cabal packets.
+/// All packets are dumped to stdout. The ones that are known are pretty
+/// printed.
 #[derive(Parser, Debug, Default)]
+#[command(about, long_about, verbatim_doc_comment)]
 pub struct ProxyArgs {
-    #[clap(short = 'p', long = "port")]
+    #[clap(long = "upstream-port", visible_alias = "up")]
     pub upstream_port: u16,
-    #[clap(short = 'p', long = "port")]
+    #[clap(long = "downstream-port", visible_alias = "dp")]
     pub downstream_port: u16,
 }
 
