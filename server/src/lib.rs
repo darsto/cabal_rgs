@@ -6,6 +6,7 @@ pub mod packet_stream;
 
 pub mod crypto;
 pub mod event;
+pub mod gms;
 pub mod proxy;
 
 use std::cell::RefCell;

@@ -13,15 +13,19 @@ enum ServiceConfigArg {
     Crypto,
     /// EventMgr equivalent
     Event,
+    /// GlobalMgrSvr equivalent
+    Gms,
     Proxy,
 }
 
 /// A service configuration
 #[derive(Debug)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum Service {
     Crypto(crate::crypto::CryptoArgs),
     Event(crate::event::EventArgs),
     Proxy(crate::proxy::ProxyArgs),
+    Gms(crate::gms::GmsArgs),
 }
 
 impl Service {
@@ -34,6 +38,7 @@ impl Service {
         match stype {
             ServiceConfigArg::Crypto => Self::Crypto(crate::crypto::CryptoArgs::parse_from(args)),
             ServiceConfigArg::Event => Self::Event(crate::event::EventArgs::parse_from(args)),
+            ServiceConfigArg::Gms => Self::Gms(crate::gms::GmsArgs::parse_from(args)),
             ServiceConfigArg::Proxy => Self::Proxy(crate::proxy::ProxyArgs::parse_from(args)),
         }
     }
