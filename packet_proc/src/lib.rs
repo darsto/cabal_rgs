@@ -51,7 +51,7 @@ pub fn packet(
     // Re-create the original struct
     let mut ret_stream = quote! {
         #(#packet_attrs)*
-        #[derive(Debug, PartialEq, Default, bincode::Encode, bincode::Decode)]
+        #[derive(Debug, PartialEq, Clone, Default, bincode::Encode, bincode::Decode)]
         #packet_vis struct #packet_ident {
             #(#fields),*
         }

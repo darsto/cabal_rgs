@@ -81,7 +81,7 @@ impl<'a> BorrowDecode<'a> for Block {
 
 /// An array that implements Default trait even for sizes > 32.
 /// Safety Note: T must be a primitive
-#[derive(PartialEq, bincode::Encode, bincode::Decode)]
+#[derive(PartialEq, Clone, bincode::Encode, bincode::Decode)]
 pub struct Arr<T: 'static, const S: usize>([T; S]);
 
 impl<T: Debug, const S: usize> Debug for Arr<T, S> {
@@ -98,7 +98,7 @@ impl<T, const S: usize> Default for Arr<T, S> {
 
 /// Vec that encodes its length using S bytes (1,2,4,8, or 0).
 /// When S is 0, the decoding will consume all source bytes.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct BoundVec<const S: usize, T>(pub Vec<T>)
 where
     T: Encode + Decode;
@@ -223,7 +223,7 @@ where
 }
 
 /// Null-terminated String. Doesn't encode its length.
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct NulltermString(pub String);
 
 impl Encode for NulltermString {
