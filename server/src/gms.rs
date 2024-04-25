@@ -3,13 +3,16 @@
 
 use crate::packet_stream::PacketStream;
 use crate::ThreadLocalExecutor;
+use borrow_mutex::BorrowMutex;
 use clap::Parser;
 use log::{error, info, trace};
+use packet::pkt_common::ServiceID;
 use packet::*;
 
 use std::fmt::Display;
 use std::net::TcpStream;
 use std::os::fd::AsRawFd;
+use std::sync::{OnceLock, RwLock, Weak};
 use std::{net::TcpListener, sync::Arc};
 
 use anyhow::{bail, Result};
@@ -21,19 +24,23 @@ use smol::Async;
 pub struct GmsArgs {}
 
 pub struct Listener {
+    me: Weak<Listener>,
     tcp_listener: Async<TcpListener>,
+    connections: RwLock<Vec<Arc<ConnectionHandle>>>,
     args: Arc<crate::args::Config>,
 }
 
 impl Listener {
-    pub fn new(tcp_listener: Async<TcpListener>, args: &Arc<crate::args::Config>) -> Self {
-        Self {
+    pub fn new(tcp_listener: Async<TcpListener>, args: &Arc<crate::args::Config>) -> Arc<Self> {
+        Arc::new_cyclic(|me| Self {
+            me: me.clone(),
             tcp_listener,
+            connections: RwLock::new(Vec::new()),
             args: args.clone(),
-        }
+        })
     }
 
-    pub async fn listen(&mut self) -> Result<()> {
+    pub async fn listen(&self) -> Result<()> {
         info!(
             "Listener: started on {}",
             self.tcp_listener.get_ref().local_addr()?
@@ -54,9 +61,16 @@ impl Listener {
         loop {
             let (stream, _) = self.tcp_listener.accept().await?;
 
-            let conn = Connection {
+            let handle = Arc::new(ConnectionHandle {
                 id: stream.as_raw_fd(),
-                service: None,
+                service: OnceLock::new(),
+                borrower: BorrowMutex::new(),
+            });
+            self.connections.write().unwrap().push(handle.clone());
+
+            let mut conn = Connection {
+                handle,
+                listener: self.me.upgrade().unwrap(),
                 stream: PacketStream::new(stream.as_raw_fd(), stream),
             };
 
@@ -64,58 +78,83 @@ impl Listener {
             ThreadLocalExecutor::get()
                 .unwrap()
                 .spawn(async move {
-                    let id = conn.id;
+                    let id = conn.handle.id;
                     info!("Listener: new connection #{id}");
-                    if let Err(err) = conn.handle().await {
+                    if let Err(err) = conn.handle_initial().await {
                         error!("Listener: connection #{id} error: {err}");
                     }
                     info!("Listener: closing connection #{id}");
+                    // TODO remove handle?
                 })
                 .detach();
-            // for now the tasks are just dropped, but we might want to
-            // wait for them in the future (or send a special shutdown
-            // message in each connection)
         }
     }
 }
 
-pub struct Connection {
-    pub id: i32,
-    pub service: Option<pkt_common::Connect>,
+struct Connection {
+    pub handle: Arc<ConnectionHandle>,
+    pub listener: Arc<Listener>,
     pub stream: PacketStream<Async<TcpStream>>,
+}
+
+#[derive(Debug, Default)]
+struct ConnectionHandle {
+    pub id: i32,
+    pub service: OnceLock<pkt_common::Connect>,
+    pub borrower: BorrowMutex<16, Connection>,
 }
 
 impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(service) = &self.service {
+        if let Some(service) = self.handle.service.get() {
             write!(f, "Conn {}", service)
         } else {
-            write!(f, "Conn #{}", self.id)
+            write!(f, "Conn #{}", self.handle.id)
         }
     }
 }
 
 impl Connection {
-    pub async fn handle(mut self) -> Result<()> {
+    pub async fn handle_initial(&mut self) -> Result<()> {
         let p = self.stream.recv().await?;
         let Payload::Connect(connect) = p else {
             bail!("{self}: Expected Connect packet, got {p:?}");
         };
-        let world_id = connect.world_id;
-        let channel_id = connect.channel_id;
-        trace!("{self}: Got hello: {connect:?}");
-        self.service = Some(connect);
+        self.handle
+            .service
+            .set(connect)
+            .expect("connection handle was already initialized");
+        let service = self.handle.service.get().unwrap();
 
-        let ack = packet::pkt_event::ConnectAck {
-            unk1: 0x0,
-            unk2: [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00],
-            world_id,
-            channel_id,
-            unk3: 0x0,
-            unk4: 0x1,
+        #[rustfmt::skip]
+        let connect_ack_bytes: Vec<u8> = match service.id {
+            ServiceID::ChatNode | ServiceID::AgentShop => [
+                0xff, 0xff, 0xff, 0x7f, 0, 0xff, 0, 0xff,
+                ServiceID::GlobalMgrSvr as u8, 0, 0, 0, 0,
+                service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
+            ]
+            .into(),
+            ServiceID::LoginSvr => [
+                0xfa, 0, 0, 0, 0, 0, 0, 0,
+                ServiceID::GlobalMgrSvr as u8, 0, 0, 0, 0,
+                service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
+            ]
+            .into(),
+            ServiceID::WorldSvr => [
+                0x50, 0, 0, 0, 0, 0, 0, 0,
+                ServiceID::GlobalMgrSvr as u8, 0, 0, 0, 0,
+                service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
+            ]
+            .into(),
+            _ => {
+                bail!("Unexpected connection from service {service:?}");
+            }
         };
+
         self.stream
-            .send(&Payload::ConnectAck(ack.try_into()?))
+            .send(&Payload::ConnectAck(pkt_common::ConnectAck {
+                bytes: BoundVec(connect_ack_bytes),
+            }))
             .await?;
 
         loop {

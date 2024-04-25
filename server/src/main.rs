@@ -42,6 +42,19 @@ fn main() {
             .detach();
     }
 
+    if args
+        .services
+        .iter()
+        .any(|f| matches!(f, server::args::Service::Gms { .. }))
+    {
+        let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 38170)) //
+            .expect("Cannot bind to 38170");
+        let gms_listener = server::gms::Listener::new(sock, &args);
+        async_ex
+            .spawn(async move { gms_listener.listen().await })
+            .detach();
+    }
+
     if let Some(Service::Proxy(proxy)) = args
         .services
         .iter()
