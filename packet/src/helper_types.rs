@@ -84,6 +84,20 @@ impl<'a> BorrowDecode<'a> for Block {
 #[derive(PartialEq, Clone, bincode::Encode, bincode::Decode)]
 pub struct Arr<T: 'static, const S: usize>([T; S]);
 
+impl<T: Debug, const S: usize> Deref for Arr<T, S> {
+    type Target = [T; S];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: Debug, const S: usize> DerefMut for Arr<T, S> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl<T: Debug, const S: usize> Debug for Arr<T, S> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
@@ -93,6 +107,14 @@ impl<T: Debug, const S: usize> Debug for Arr<T, S> {
 impl<T, const S: usize> Default for Arr<T, S> {
     fn default() -> Self {
         Self(unsafe { MaybeUninit::<[T; S]>::zeroed().assume_init() })
+    }
+}
+
+impl<T: Copy, const S: usize> From<&[T]> for Arr<T, S> {
+    fn from(value: &[T]) -> Self {
+        let mut ret = Self::default();
+        ret.0[..value.len()].copy_from_slice(value);
+        ret
     }
 }
 
