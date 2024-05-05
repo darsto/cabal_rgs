@@ -50,7 +50,7 @@ pub enum Payload {
     DailyQuestResetTime(pkt_global::DailyQuestResetTime),
     AdditionalDungeonInstanceCount(pkt_global::AdditionalDungeonInstanceCount),
     SystemMessage(pkt_global::SystemMessage),
-    SystemMessageResult(pkt_global::SystemMessageResult),
+    SystemMessageForwarded(pkt_global::SystemMessageForwarded),
     NotifyUserCount(pkt_global::NotifyUserCount),
     ServerState(pkt_global::ServerState),
     ProfilePathRequest(pkt_global::ProfilePathRequest),

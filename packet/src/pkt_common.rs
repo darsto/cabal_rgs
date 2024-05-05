@@ -41,14 +41,14 @@ impl std::fmt::Display for Connect {
 pub enum ServiceID {
     #[default]
     None = 0x0,
-    WorldSvr = 0xa1,
-    LoginSvr = 0xc3,
-    DBAgent = 0xd4,
-    AgentShop = 0xe9,
-    EventNgr = 0xf5,
-    GlobalMgrSvr = 0xf6,
-    ChatNode = 0xfa,
-    RockNRoll = 0xfd,
+    WorldSvr = 0xa1, // 161
+    LoginSvr = 0xc3, // 195
+    DBAgent = 0xd4, // 212
+    AgentShop = 0xe9, // 233
+    EventMgr = 0xf5, // 245
+    GlobalMgrSvr = 0xf6, // 246
+    ChatNode = 0xfa, // 250
+    RockNRoll = 0xfd, // 253
 }
 
 #[packet(0x6)]

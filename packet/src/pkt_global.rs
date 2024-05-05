@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2024 Darek Stojaczyk
 
-use packet_proc::packet;
+use num_enum::{IntoPrimitive, TryFromPrimitive};
+use packet_proc::{packet, PacketEnum};
 
 use crate::{assert_def_packet_size, BoundVec};
 
@@ -15,7 +16,10 @@ pub struct RegisterChatSvr {
 }
 assert_def_packet_size!(RegisterChatSvr, 6);
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, TryFromPrimitive, IntoPrimitive, PacketEnum)]
+#[repr(u32)]
 pub enum ServerStateEnum {
+    #[default]
     Disabled = 0x0, // can't connect
     Green = 0x1,    // low population
     Orange = 0x2,   // medium population
@@ -26,7 +30,7 @@ pub enum ServerStateEnum {
 pub struct ChangeServerState {
     server_id: u8,
     channel_id: u8,
-    state: u32,
+    state: ServerStateEnum,
 }
 assert_def_packet_size!(ChangeServerState, 6);
 
@@ -46,7 +50,7 @@ assert_def_packet_size!(ClientVersionNotify, 8);
 
 #[packet(0xbd5)]
 pub struct DailyQuestResetTime {
-    unk1: u32, // unix timestamp, unknown timezone
+    next_daily_reset_time: u32, // unix timestamp, unknown timezone
     unk2: u32, // usually 0
 }
 assert_def_packet_size!(DailyQuestResetTime, 8);
@@ -75,13 +79,13 @@ pub struct SystemMessage {
     unk2: u32,    // 1?
     msg_type: u8, // 0,1,2,3? or 9...
     aux: BoundVec<1, u8>,
-    // there might be 1 trailing byte
+    // there might be 1 trailing byte in case aux is empty
     trailing: BoundVec<0, u8>,
 }
 assert_def_packet_size!(SystemMessage, 0x1d - 1 - Header::SIZE);
 
 #[packet(0x16)]
-pub struct SystemMessageResult {
+pub struct SystemMessageForwarded {
     data: SystemMessage,
 }
 
@@ -102,37 +106,49 @@ assert_def_packet_size!(NotifyUserCount, 0x1b4 - Header::SIZE);
 
 #[packet(0x35)]
 pub struct ServerState {
-    servers: BoundVec<1, ServerNode>,
+    bytes: BoundVec<0, u8>,
+}
+
+#[packet]
+pub struct LoginServerState {
+    servers: BoundVec<1, LoginServerNode>,
     // the packet is usually sized way more than needed
     trailing: BoundVec<0, u8>,
 }
+packet_alias!(LoginServerState, ServerState);
 
-// must be 7 bytes!
 #[packet]
-pub struct ServerNode {
-    id: u8,
+pub struct WorldServerState {
+    unk1: u8, // 1 - server id?
+    groups: BoundVec<0, GroupNode>,
+}
+packet_alias!(WorldServerState, ServerState);
+
+#[packet]
+pub struct LoginServerNode {
+    id: u8, // 1 - server id?
     stype: u8, // usually 0x10 (set in globalmgrsvr ini)
-    unk1: u32,
+    unk1: u32, // 0
     groups: BoundVec<1, GroupNode>,
 }
-assert_def_packet_size!(ServerNode, 7);
+assert_def_packet_size!(LoginServerNode, 0x7);
 
 // must be 0x25 bytes
 #[packet]
 pub struct GroupNode {
     id: u8,
-    unk0: u16, // 1 later on
+    unk0: u16,
     unk1: u32,
     unk2: u32,
     unk3: u32,
     unk4: u32,
     unk5: u16,
     unk6: u16,
-    unk7: u16, //0xff later on
+    unk7: u16, // 0xff later on
     unk8: u16, // 0x50 max players (set in globalmgrsvr ini)
-    ip: u32,   // 8f00020a
+    ip: [u8; 4],   // 8f00020a
     port: u16, // 0x94df
-    unk9: u32, // 0x5
+    state: u32, // 0x5
 }
 assert_def_packet_size!(GroupNode, 37);
 
@@ -143,7 +159,7 @@ pub struct ProfilePathRequest {
 
 #[packet(0x2f7)]
 pub struct ProfilePathResponse {
-    unk1: u32, // usually 0x6, but worldsvr doesn't seem to parse it
+    unk1: u32, // either 0x5 or 0x6, but worldsvr doesn't seem to parse it, just checks != 0
 
     scp_id1: u8, // 0x4 = item.scp; 0x2 = mobs.scp; 0x1 = warp.scp
     scp_path1: Arr<u8, 0x100>,
@@ -181,7 +197,7 @@ pub struct ShutdownStatsSet {
 #[packet(0xc76)]
 pub struct ChannelOptionSync {
     unk1: u16, // 0?
-    unk2: u16, // 255?
+    unk2: u16, // 65280?
     unk3: u32, // [80, 0, 0, 0]? only the low 2 bytes are read -> 0
     unk4: u32, // 5
 }

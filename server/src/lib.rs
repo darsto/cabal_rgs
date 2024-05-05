@@ -2,6 +2,7 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 pub mod args;
+pub mod atomic_append_vec;
 pub mod packet_stream;
 
 pub mod crypto;
