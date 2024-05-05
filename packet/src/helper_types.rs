@@ -121,9 +121,7 @@ impl<T: Copy, const S: usize> From<&[T]> for Arr<T, S> {
 /// Vec that encodes its length using S bytes (1,2,4,8, or 0).
 /// When S is 0, the decoding will consume all source bytes.
 #[derive(Debug, Default, Clone, PartialEq)]
-pub struct BoundVec<const S: usize, T>(pub Vec<T>)
-where
-    T: Encode + Decode;
+pub struct BoundVec<const S: usize, T>(pub Vec<T>);
 
 impl<const S: usize, T> Encode for BoundVec<S, T>
 where
@@ -241,6 +239,12 @@ where
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.0
+    }
+}
+
+impl<const S: usize, T> From<Vec<T>> for BoundVec<S, T> {
+    fn from(value: Vec<T>) -> Self {
+        Self(value)
     }
 }
 
