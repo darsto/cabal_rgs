@@ -10,7 +10,7 @@ use packet::*;
 use super::Connection;
 
 pub struct GlobalChatHandler {
-    conn: Connection,
+    pub conn: Box<Connection>,
 }
 
 impl std::fmt::Display for GlobalChatHandler {
@@ -20,11 +20,11 @@ impl std::fmt::Display for GlobalChatHandler {
 }
 
 impl GlobalChatHandler {
-    pub fn new(conn: Connection) -> Self {
+    pub fn new(conn: Box<Connection>) -> Self {
         Self { conn }
     }
 
-    pub async fn handle(mut self) -> Result<()> {
+    pub async fn handle(&mut self) -> Result<()> {
         let conn_ref = self.conn.conn_ref.as_ref().unwrap().clone();
         let service = &conn_ref.service;
 
@@ -45,7 +45,6 @@ impl GlobalChatHandler {
         };
         trace!("{self}: Got {p:?}");
 
-        let lender = conn_ref.borrower.inner::<GlobalChatHandler>();
         loop {
             futures::select! {
                 p = self.conn.stream.recv().fuse() => {
@@ -54,8 +53,8 @@ impl GlobalChatHandler {
                     })?;
                     trace!("{self}: Got packet: {p:?}");
                 }
-                _ = lender.wait_to_lend().fuse() => {
-                    lender.lend(&mut self).unwrap().await
+                _ = conn_ref.borrower.wait_to_lend().fuse() => {
+                    conn_ref.borrower.lend(&mut self.conn).unwrap().await
                 }
             }
         }

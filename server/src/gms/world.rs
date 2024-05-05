@@ -2,10 +2,11 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use std::cell::OnceCell;
+use std::pin::pin;
 
 use anyhow::anyhow;
 use anyhow::{bail, Result};
-use futures::FutureExt;
+use futures::{FutureExt, StreamExt};
 use log::trace;
 use packet::pkt_common::*;
 use packet::pkt_global::*;
@@ -13,11 +14,11 @@ use packet::*;
 
 use crate::gms::login::GlobalLoginHandler;
 
-use super::{Connection, ConnectionHandlerBorrower};
+use super::Connection;
 
 #[derive(Default)]
 pub struct GlobalWorldHandler {
-    pub conn: Connection,
+    pub conn: Box<Connection>,
     ip_port: OnceCell<([u8; 4], u16)>,
     state: u32,
 }
@@ -29,7 +30,7 @@ impl std::fmt::Display for GlobalWorldHandler {
 }
 
 impl GlobalWorldHandler {
-    pub fn new(conn: Connection) -> Self {
+    pub fn new(conn: Box<Connection>) -> Self {
         Self {
             conn,
             state: 5, // unknown
@@ -37,7 +38,7 @@ impl GlobalWorldHandler {
         }
     }
 
-    pub async fn handle(mut self) -> Result<()> {
+    pub async fn handle(&mut self) -> Result<()> {
         let conn_ref = self.conn.conn_ref.as_ref().unwrap().clone();
         let service = &conn_ref.service;
 
@@ -78,7 +79,6 @@ impl GlobalWorldHandler {
             ))
             .await?;
 
-        let lender = conn_ref.borrower.inner::<GlobalWorldHandler>();
         loop {
             futures::select! {
                 p = self.conn.stream.recv().fuse() => {
@@ -100,8 +100,8 @@ impl GlobalWorldHandler {
                         }
                     }
                 }
-                _ = lender.wait_to_lend().fuse() => {
-                    lender.lend(&mut self).unwrap().await
+                _ = conn_ref.borrower.wait_to_lend().fuse() => {
+                    conn_ref.borrower.lend(&mut self.conn).unwrap().await
                 }
             }
         }
@@ -146,18 +146,11 @@ impl GlobalWorldHandler {
         // server. We'll let GlobalLoginHandler do that.
         // In the orignal GMS there should be at most one LoginSvr,
         // but here it doesn't hurt to support more (untested though)
-        for handle in self
-            .conn
-            .listener
-            .conn_refs
-            .iter()
-            .filter(|handle| handle.service.id == ServiceID::LoginSvr)
+        while let Some(mut handler) = //
+            pin!(self.conn.iter_handlers::<GlobalLoginHandler>())
+                .next()
+                .await
         {
-            let Ok(mut handler) = handle.borrower.request_borrow::<GlobalLoginHandler>().await
-            else {
-                continue;
-            };
-
             handler.notify_user_counts = true;
         }
 

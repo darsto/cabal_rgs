@@ -147,8 +147,7 @@ impl Payload {
         )?))
     }
 
-    fn encode_into_std_write<T: Encode>(
-        &self,
+    pub fn encode_into_std_write<T: Encode>(
         obj: &T,
         dst: &mut Vec<u8>,
     ) -> Result<usize, EncodeError> {
@@ -157,7 +156,7 @@ impl Payload {
 
     #[genmatch_self(Payload)]
     pub fn encode_raw(&self, dst: &mut Vec<u8>) -> Result<usize, EncodeError> {
-        Self::encode_into_std_write(self, inner, dst)
+        Self::encode_into_std_write(inner, dst)
     }
 
     #[genmatch_self(Payload)]

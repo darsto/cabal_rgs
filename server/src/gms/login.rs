@@ -4,6 +4,7 @@
 use std::pin::pin;
 
 use anyhow::anyhow;
+use anyhow::bail;
 use anyhow::Result;
 use futures::FutureExt;
 use futures::StreamExt;
@@ -17,7 +18,7 @@ use crate::gms::world::GlobalWorldHandler;
 use super::Connection;
 
 pub struct GlobalLoginHandler {
-    pub conn: Connection,
+    pub conn: Box<Connection>,
     pub notify_user_counts: bool,
 }
 
@@ -28,14 +29,14 @@ impl std::fmt::Display for GlobalLoginHandler {
 }
 
 impl GlobalLoginHandler {
-    pub fn new(conn: Connection) -> Self {
+    pub fn new(conn: Box<Connection>) -> Self {
         Self {
             conn,
             notify_user_counts: false,
         }
     }
 
-    pub async fn handle(mut self) -> Result<()> {
+    pub async fn handle(&mut self) -> Result<()> {
         let conn_ref = self.conn.conn_ref.as_ref().unwrap().clone();
         let service = &conn_ref.service;
 
@@ -59,7 +60,6 @@ impl GlobalLoginHandler {
             }))
             .await?;
 
-        let lender = conn_ref.borrower.inner::<Self>();
         loop {
             futures::select! {
                 p = self.conn.stream.recv().fuse() => {
@@ -73,13 +73,16 @@ impl GlobalLoginHandler {
                         Payload::SystemMessage(p) => {
                             self.handle_system_message(p).await?;
                         }
+                        Payload::RoutePacket(p) => {
+                            self.handle_route_packet(p).await?;
+                        }
                         _ => {
                             trace!("{self}: Got packet: {p:?}");
                         }
                     }
                 }
-                _ = lender.wait_to_lend().fuse() => {
-                    lender.lend(&mut self).unwrap().await
+                _ = conn_ref.borrower.wait_to_lend().fuse() => {
+                    conn_ref.borrower.lend(&mut self.conn).unwrap().await
                 }
             }
 
@@ -120,7 +123,10 @@ impl GlobalLoginHandler {
                 .await
         {
             if let Err(e) = conn.conn.stream.send(&world_srv_state).await {
-                error!("Failed to send WorldServerState to {}: {e}", conn.conn);
+                error!(
+                    "{self}: Failed to send WorldServerState to {}: {e}",
+                    conn.conn
+                );
             }
         }
 
@@ -143,7 +149,7 @@ impl GlobalLoginHandler {
             ))
             .await
         {
-            error!("{self} Failed to send LoginServerState: {e}");
+            error!("{self}: Failed to send LoginServerState: {e}");
         }
 
         Ok(())
@@ -158,11 +164,53 @@ impl GlobalLoginHandler {
                 .await
         {
             if let Err(e) = conn.conn.stream.send(&resp).await {
-                error!("Failed to forward SystemMessage to {}: {e}", conn.conn);
+                error!(
+                    "{self}: Failed to forward SystemMessage to {}: {e}",
+                    conn.conn
+                );
             }
         }
 
         self.conn.stream.send(&resp).await?;
+        Ok(())
+    }
+
+    pub async fn handle_route_packet(&mut self, p: RoutePacket) -> Result<()> {
+        let route_hdr = &p.droute_hdr.route_hdr;
+
+        let Some(conn_ref) = self.conn.listener.conn_refs.iter().find(|conn_ref| {
+            let s = &conn_ref.service;
+            s.world_id == route_hdr.server_id && s.channel_id == route_hdr.group_id
+        }) else {
+            bail!("{self}: Can't find a conn to route to: {route_hdr:?}");
+        };
+
+        let psize = std::mem::size_of_val(&p);
+        let mut bytes = Vec::with_capacity(psize + Header::SIZE);
+        let hdr = Header::new(route_hdr.origin_main_cmd, (psize + Header::SIZE) as u16);
+        let len = Payload::encode_into_std_write(&p, &mut bytes)
+            .map_err(|e| anyhow!("{self}: Failed to reencode packet {e}: {p:?}"))?;
+        let target_payload = Payload::decode(&hdr, &bytes)
+            .map_err(|e| anyhow!("{self}: Failed to decode target packet {e}: {p:?}"))?;
+        assert_eq!(len, psize);
+
+        let mut target_conn = conn_ref
+            .borrower
+            .request_borrow()
+            .await
+            .map_err(|e| anyhow!("{self}: request_borrow() failed: {e}"))?;
+
+        target_conn
+            .stream
+            .send(&target_payload)
+            .await
+            .map_err(|e| {
+                anyhow!(
+                    "{self}: Failed to forward RoutePacket to {}: {e}",
+                    &*target_conn
+                )
+            })?;
+
         Ok(())
     }
 }
