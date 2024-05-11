@@ -14,13 +14,12 @@ use packet::*;
 
 use std::any::TypeId;
 use std::fmt::Display;
-use std::mem::MaybeUninit;
 use std::net::TcpStream;
 use std::os::fd::AsRawFd;
 use std::sync::Weak;
 use std::{net::TcpListener, sync::Arc};
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use smol::Async;
 
 mod chat;
@@ -108,12 +107,6 @@ struct Connection {
     handler: Option<ConnectionHandler>,
 }
 
-impl Default for Connection {
-    fn default() -> Self {
-        unimplemented!();
-    }
-}
-
 const BORROW_MUTEX_SIZE: usize = 16;
 
 #[genmatch]
@@ -175,7 +168,7 @@ struct ConnectionRef {
 impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(handle) = &self.conn_ref {
-            write!(f, "Conn {}", handle.service)
+            write!(f, "Conn #{} ({})", self.id, handle.service)
         } else {
             write!(f, "Conn #{}", self.id)
         }
@@ -187,24 +180,19 @@ macro_rules! init_start_handler {
     ($conn:ident, $handler_type:expr, $handler_struct:ident) => {{
         let conn_ref = $conn.conn_ref.as_ref().unwrap().clone();
         let listener = $conn.listener.clone();
+        let conn_ptr: *mut Connection = $conn.as_mut();
 
-        // SAFETY: This should be safe as long as the code doesn't panic inbetween
-        #[allow(invalid_value, clippy::uninit_assumed_init)]
-        let handler =
-            $handler_type(unsafe { MaybeUninit::<$handler_struct>::uninit().assume_init() });
-        let handler = $conn.handler.insert(handler);
-        let inner_handler: &mut std::mem::MaybeUninit<$handler_struct> =
-            unsafe { std::mem::transmute(handler.inner_mut::<$handler_struct>()) };
+        let handler = $handler_type($handler_struct::new($conn));
+        let handler = unsafe { &mut *conn_ptr }.handler.insert(handler);
 
-        let inner_handler = inner_handler.write($handler_struct::new($conn));
         listener.conn_refs.push(conn_ref).unwrap();
-        inner_handler.handle()
+        handler.inner_mut::<$handler_struct>().handle()
     }};
 }
 
 impl Connection {
     async fn handle(mut self: Box<Connection>) -> Result<()> {
-        let p = self.stream.recv().await?;
+        let p = self.stream.recv().await.map_err(|e| anyhow!("{self}: Failed to receive the first packet: {e:?}"))?;
         let Payload::Connect(service) = p else {
             bail!("{self}: Expected Connect packet, got {p:?}");
         };
@@ -216,7 +204,7 @@ impl Connection {
                 && s.channel_id == service.channel_id
         }) {
             bail!(
-                "Received multiple connections from the same service: {service:?}, previous: {:?}",
+                "{self}: Received multiple connections from the same service: {service:?}, previous: {:?}",
                 &conn.service
             );
         }
@@ -242,7 +230,7 @@ impl Connection {
                 init_start_handler!(self, ConnectionHandler::WorldSvr, GlobalWorldHandler).await
             }
             _ => {
-                bail!("Unexpected connection from service {service:?}");
+                bail!("{self}: Unexpected connection from service {service:?}");
             }
         }
     }

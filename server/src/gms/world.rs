@@ -3,6 +3,7 @@
 
 use std::cell::OnceCell;
 use std::pin::pin;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::anyhow;
 use anyhow::{bail, Result};
@@ -16,7 +17,6 @@ use crate::gms::login::GlobalLoginHandler;
 
 use super::Connection;
 
-#[derive(Default)]
 pub struct GlobalWorldHandler {
     pub conn: Box<Connection>,
     ip_port: OnceCell<([u8; 4], u16)>,
@@ -34,7 +34,7 @@ impl GlobalWorldHandler {
         Self {
             conn,
             state: 5, // unknown
-            ..Default::default()
+            ip_port: Default::default(),
         }
     }
 
@@ -51,7 +51,7 @@ impl GlobalWorldHandler {
                     service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
                 ]),
             }))
-            .await?;
+            .await.unwrap();
 
         self.conn
             .stream
@@ -60,24 +60,24 @@ impl GlobalWorldHandler {
                 channel_id: service.channel_id,
                 state: self.state,
             }))
-            .await?;
+            .await.unwrap();
 
         let cur_timestamp = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as u32;
-        let next_daily_reset_time = cur_timestamp.next_multiple_of(3600 * 24);
+        let next_daily_reset_time = cur_timestamp.next_multiple_of(24 * 3600) - 24 * 3600 + 4 * 3600; /* FIXME: 4h offset is a temporary hack */
         self.conn
             .stream
             .send(&Payload::DailyQuestResetTime(DailyQuestResetTime {
                 next_daily_reset_time,
                 unk2: 0,
             }))
-            .await?;
+            .await.unwrap();
 
         self.conn
             .stream
             .send(&Payload::AdditionalDungeonInstanceCount(
                 AdditionalDungeonInstanceCount { unk1: 0, unk2: 0 },
             ))
-            .await?;
+            .await.unwrap();
 
         loop {
             futures::select! {
@@ -87,13 +87,13 @@ impl GlobalWorldHandler {
                     })?;
                     match p {
                         Payload::ProfilePathRequest(p) => {
-                            self.handle_profile_path(p).await?;
+                            self.handle_profile_path(p).await.unwrap();
                         }
                         Payload::NotifyUserCount(p) => {
-                            self.handle_user_count_update(p).await?;
+                            self.handle_user_count_update(p).await.unwrap();
                         }
                         Payload::ChannelOptionSync(p) => {
-                            self.handle_channel_option_sync(p).await?;
+                            self.handle_channel_option_sync(p).await.unwrap();
                         }
                         _ => {
                             trace!("{self}: Got packet: {p:?}");
@@ -108,11 +108,12 @@ impl GlobalWorldHandler {
     }
 
     async fn handle_profile_path(&mut self, p: ProfilePathRequest) -> Result<()> {
+        static COUNTER: AtomicUsize = AtomicUsize::new(0);
         assert_eq!(p.unk1, 0);
         self.conn
             .stream
             .send(&Payload::ProfilePathResponse(ProfilePathResponse {
-                unk1: 5,
+                unk1: 6 + COUNTER.fetch_add(1, Ordering::Relaxed) as u32, // TODO: test with more than 2 channels
                 scp_id1: 4,
                 scp_path1: Arr::from("Data/Item.scp".as_bytes()),
                 scp_id2: 2,

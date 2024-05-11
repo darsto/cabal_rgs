@@ -37,7 +37,7 @@ impl GlobalAgentShopHandler {
                     service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
                 ]),
             }))
-            .await?;
+            .await.unwrap();
 
         // There should be nothing else to do for now (until we start using AgentShop maybe?)
 

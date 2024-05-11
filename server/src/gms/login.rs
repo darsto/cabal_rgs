@@ -49,7 +49,7 @@ impl GlobalLoginHandler {
                     service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
                 ]),
             }))
-            .await?;
+            .await.unwrap();
 
         self.conn
             .stream
@@ -58,7 +58,7 @@ impl GlobalLoginHandler {
                 channel_id: service.channel_id,
                 state: ServerStateEnum::Disabled,
             }))
-            .await?;
+            .await.unwrap();
 
         loop {
             futures::select! {
@@ -71,10 +71,10 @@ impl GlobalLoginHandler {
                             self.notify_user_counts = true;
                         }
                         Payload::SystemMessage(p) => {
-                            self.handle_system_message(p).await?;
+                            self.handle_system_message(p).await.unwrap();
                         }
                         Payload::RoutePacket(p) => {
-                            self.handle_route_packet(p).await?;
+                            self.handle_route_packet(p).await.unwrap();
                         }
                         _ => {
                             trace!("{self}: Got packet: {p:?}");
@@ -87,7 +87,7 @@ impl GlobalLoginHandler {
             }
 
             if self.notify_user_counts {
-                self.update_user_count().await?;
+                self.update_user_count().await.unwrap();
                 self.notify_user_counts = false;
             }
         }
@@ -130,19 +130,30 @@ impl GlobalLoginHandler {
             }
         }
 
+        let mut servers = vec![];
+        if !groups.is_empty() {
+            servers.push(LoginServerNode {
+                id: 1,
+                stype: 16,
+                unk1: 0,
+                groups: groups.into(),
+            });
+        }
+
+        servers.push(LoginServerNode {
+            id: 0x80,
+            stype: 0,
+            unk1: 0,
+            groups: Vec::new().into(),
+        });
+
         if let Err(e) = self
             .conn
             .stream
             .send(&Payload::ServerState(
                 LoginServerState {
-                    servers: vec![LoginServerNode {
-                        id: 1,
-                        stype: 16,
-                        unk1: 0,
-                        groups: groups.clone().into(),
-                    }]
-                    .into(),
-                    trailing: Vec::new().into(),
+                    servers: servers.into(),
+                    trailing: vec![0; 1024].into(),
                 }
                 .try_into()
                 .unwrap(),
@@ -171,7 +182,7 @@ impl GlobalLoginHandler {
             }
         }
 
-        self.conn.stream.send(&resp).await?;
+        self.conn.stream.send(&resp).await.unwrap();
         Ok(())
     }
 

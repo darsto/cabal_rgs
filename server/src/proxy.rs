@@ -60,8 +60,11 @@ impl Listener {
 
         loop {
             let (upstream, _) = self.tcp_listener.accept().await?;
+            info!("Connecting to downstream: {}", proxyargs.downstream_port);
             let downstream =
                 Async::<TcpStream>::connect(([127, 0, 0, 1], proxyargs.downstream_port)).await?;
+
+            info!("Connected to downstream");
             let upstream_id = upstream.as_raw_fd();
             let downstream_id = downstream.as_raw_fd();
 

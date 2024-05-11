@@ -37,13 +37,12 @@ impl GlobalChatHandler {
                     service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
                 ]),
             }))
-            .await?;
+            .await.unwrap();
 
-        let p = self.conn.stream.recv().await?;
-        let Payload::RegisterChatSvr(p) = p else {
+        let p = self.conn.stream.recv().await.unwrap();
+        let Payload::RegisterChatSvr(_) = p else {
             bail!("{self}: Expected RegisterChatSvr packet, got {p:?}");
         };
-        trace!("{self}: Got {p:?}");
 
         loop {
             futures::select! {

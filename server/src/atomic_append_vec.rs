@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2024 Darek Stojaczyk
 
-use std::cell::UnsafeCell;
-use std::mem::MaybeUninit;
 use std::ops::{Index, IndexMut};
-use std::slice::{Iter, IterMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::OnceLock;
 
 pub struct AtomicAppendVec<T> {
-    vec: Vec<UnsafeCell<MaybeUninit<T>>>,
+    vec: Vec<OnceLock<T>>,
     len: AtomicUsize,
 }
 
@@ -27,8 +25,10 @@ impl<T> AtomicAppendVec<T> {
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
+        let mut vec = Vec::with_capacity(capacity);
+        vec.resize_with(capacity, Default::default);
         Self {
-            vec: Vec::with_capacity(capacity),
+            vec,
             len: AtomicUsize::new(0),
         }
     }
@@ -47,26 +47,30 @@ impl<T> AtomicAppendVec<T> {
             self.len.store(self.vec.capacity(), Ordering::Relaxed);
             Err(value)
         } else {
-            // SAFETY: we are the only ones referencing this memory
-            let slot = unsafe { &mut *self.vec[idx].get() };
-            Ok(slot.write(value))
+            Ok(self.vec[idx].get_or_init(|| value))
         }
     }
 
-    pub fn iter(&self) -> std::iter::Take<Iter<'_, T>> {
-        unsafe { std::mem::transmute(self.vec.iter().take(self.len.load(Ordering::Relaxed))) }
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.vec
+            .iter()
+            .filter_map(|cell| cell.get())
+            .take(self.len.load(Ordering::Relaxed))
     }
 
-    pub fn iter_mut(&mut self) -> std::iter::Take<IterMut<'_, T>> {
-        unsafe { std::mem::transmute(self.vec.iter_mut().take(self.len.load(Ordering::Relaxed))) }
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
+        self.vec
+            .iter_mut()
+            .filter_map(|cell| cell.get_mut())
+            .take(self.len.load(Ordering::Relaxed))
     }
-}
 
-impl<T> IntoIterator for AtomicAppendVec<T> {
-    type Item = T;
-    type IntoIter = std::iter::Take<std::vec::IntoIter<T>>;
-    fn into_iter(self) -> Self::IntoIter {
-        unsafe { std::mem::transmute(self.vec.into_iter().take(self.len.load(Ordering::Relaxed))) }
+    #[allow(clippy::should_implement_trait)]
+    pub fn into_iter(self) -> impl Iterator<Item = T> {
+        self.vec
+            .into_iter()
+            .filter_map(|cell| cell.into_inner())
+            .take(self.len.load(Ordering::Relaxed))
     }
 }
 
@@ -78,7 +82,7 @@ impl<T> Index<usize> for AtomicAppendVec<T> {
             panic!("Access out of bounds");
         }
 
-        unsafe { std::mem::transmute(self.vec.index(index)) }
+        self.vec.index(index).get().unwrap()
     }
 }
 
@@ -88,7 +92,7 @@ impl<T> IndexMut<usize> for AtomicAppendVec<T> {
             panic!("Access out of bounds");
         }
 
-        unsafe { std::mem::transmute(self.vec.index_mut(index)) }
+        self.vec.index_mut(index).get_mut().unwrap()
     }
 }
 

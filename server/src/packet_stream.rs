@@ -37,7 +37,7 @@ impl<T: Unpin + AsyncRead> PacketStream<T> {
         let mut hdrbuf = [0u8; Header::SIZE];
         self.stream.read_exact(&mut hdrbuf).await?;
         let hdr = Header::decode(&hdrbuf)?;
-        trace!("{self}: got hdr: {hdr:x?}");
+        //trace!("{self}: got hdr: {hdr:x?}");
 
         let payload_len = hdr.len as u64 - Header::SIZE as u64;
         self.buf.resize(payload_len as usize, 0u8);
@@ -45,14 +45,18 @@ impl<T: Unpin + AsyncRead> PacketStream<T> {
         self.stream.read_exact(slice).await?;
 
         let slice = &self.buf[..];
-        trace!("{self}: got payload: {:x?}", slice);
-        Payload::decode(&hdr, slice)
-            .map_err(|e| anyhow!("Can't decode packet {hdr:x?}: {e}\nPayload: {slice:x?}"))
+        //trace!("{self}: got payload: {:x?}", slice);
+        let p = Payload::decode(&hdr, slice)
+            .map_err(|e| anyhow!("Can't decode packet {hdr:x?}: {e}\nPayload: {slice:x?}"));
+
+        trace!("{self}: decoded packet: {p:?}");
+        p
     }
 }
 
 impl<T: Unpin + AsyncWrite> PacketStream<T> {
     pub async fn send(&mut self, pkt: &Payload) -> Result<()> {
+        //trace!("{self}: sent pkt: {pkt:?}");
         self.buf.clear();
         let len = pkt.encode(&mut self.buf)?;
         self.stream.write_all(&self.buf[..len]).await?;
