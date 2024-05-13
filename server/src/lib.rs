@@ -50,14 +50,10 @@ impl<'a> ThreadLocalExecutor<'a> {
     pub fn new() -> Result<Self, ()> {
         let ex = Box::new(LocalExecutor::new());
         ASYNC_EX.with(|refcell| {
-            // Clippy says casting raw pointer to the same type and constness is unnecessary,
-            // but its suggestion simply doesn't work. Ignore the warning for now.
-            #[allow(clippy::unnecessary_cast)]
-            let ptr = &*ex as *const _ as *const LocalExecutor<'static>;
             // SAFETY: we store the reference in global storage, and so we need to change
             // its lifetime to 'static, but the reference can be only accessed through our
             // [`ThreadLocalExecutor::get`] method which casts the lifetime back to 'a
-            *refcell.borrow_mut() = Some(unsafe { ptr.as_ref() }.unwrap());
+            *refcell.borrow_mut() = Some(unsafe { std::mem::transmute(ex.as_ref()) });
             Ok(())
         })?;
 
@@ -66,12 +62,8 @@ impl<'a> ThreadLocalExecutor<'a> {
 
     pub fn get() -> Option<&'a LocalExecutor<'a>> {
         ASYNC_EX.with(|ex| {
-            // Clippy says casting raw pointer to the same type and constness is unnecessary,
-            // but its suggestion simply doesn't work. Ignore the warning for now.
-            #[allow(clippy::unnecessary_cast)]
-            let ptr = &*ex.borrow() as *const _ as *const Option<&'a LocalExecutor<'a>>;
-            // SAFETY: We're casting the pointer to its original, real lifetime
-            *unsafe { ptr.as_ref() }.unwrap()
+            // SAFETY: See [`ThreadLocalExecutor::new`]
+            unsafe { std::mem::transmute(*ex.borrow()) }
         })
     }
 }
