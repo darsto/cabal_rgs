@@ -7,10 +7,12 @@ use log::trace;
 use packet::pkt_common::ServiceID;
 use packet::*;
 
+use crate::gms::ConnectionHandler;
+
 use super::Connection;
 
 pub struct GlobalChatHandler {
-    pub conn: Box<Connection>,
+    pub conn: Connection,
 }
 
 impl std::fmt::Display for GlobalChatHandler {
@@ -20,12 +22,12 @@ impl std::fmt::Display for GlobalChatHandler {
 }
 
 impl GlobalChatHandler {
-    pub fn new(conn: Box<Connection>) -> Self {
+    pub fn new(conn: Connection) -> Self {
         Self { conn }
     }
 
     pub async fn handle(&mut self) -> Result<()> {
-        let conn_ref = self.conn.conn_ref.as_ref().unwrap().clone();
+        let conn_ref = self.conn.conn_ref.clone();
         let service = &conn_ref.service;
 
         #[rustfmt::skip]
@@ -53,7 +55,7 @@ impl GlobalChatHandler {
                     trace!("{self}: Got packet: {p:?}");
                 }
                 _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                    conn_ref.borrower.lend(&mut self.conn).unwrap().await
+                    conn_ref.borrower.lend(&mut self).unwrap().await;
                 }
             }
         }

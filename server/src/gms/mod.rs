@@ -43,6 +43,15 @@ pub struct Listener {
     args: Arc<crate::args::Config>,
 }
 
+impl std::fmt::Display for Listener {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!(
+            "GMS:{}",
+            self.tcp_listener.get_ref().local_addr().unwrap().port()
+        ))
+    }
+}
+
 impl Listener {
     pub fn new(tcp_listener: Async<TcpListener>, args: &Arc<crate::args::Config>) -> Arc<Self> {
         Arc::new_cyclic(|me| Self {
@@ -73,22 +82,14 @@ impl Listener {
 
         loop {
             let (stream, _) = self.tcp_listener.accept().await?;
-
-            let conn = Box::new(Connection {
-                id: stream.as_raw_fd(),
-                conn_ref: None,
-                listener: self.me.upgrade().unwrap(),
-                stream: PacketStream::new(stream.as_raw_fd(), stream),
-                handler: None,
-            });
-
+            let listener = self.me.upgrade().unwrap();
             // Give the connection handler its own background task
             ThreadLocalExecutor::get()
                 .unwrap()
                 .spawn(async move {
-                    let id = conn.id;
+                    let id = stream.as_raw_fd();
                     info!("Listener: new connection #{id}");
-                    if let Err(err) = conn.handle().await {
+                    if let Err(err) = listener.handle_new_conn(id, stream).await {
                         error!("Listener: connection #{id} error: {err}");
                     }
                     info!("Listener: closing connection #{id}");
@@ -97,14 +98,72 @@ impl Listener {
                 .detach();
         }
     }
+
+    async fn handle_new_conn(self: Arc<Listener>, id: i32, stream: Async<TcpStream>) -> Result<()> {
+        let mut stream = PacketStream::new(stream.as_raw_fd(), stream);
+        let p = stream
+            .recv()
+            .await
+            .map_err(|e| anyhow!("{self}: Failed to receive the first packet: {e:?}"))?;
+        let Payload::Connect(service) = p else {
+            bail!("{self}: Expected Connect packet, got {p:?}");
+        };
+
+        if let Some(conn) = self.conn_refs.iter().find(|conn| {
+            let s = &conn.service;
+            s.id == service.id
+                && s.world_id == service.world_id
+                && s.channel_id == service.channel_id
+        }) {
+            bail!(
+                    "{self}: Received multiple connections from the same service: {service:?}, previous: {:?}",
+                    &conn.service
+                );
+        }
+
+        let conn_ref = Arc::new(ConnectionRef {
+            service,
+            borrower: BorrowMutex::new(),
+        });
+        let conn = Connection {
+            id,
+            conn_ref,
+            listener: self.clone(),
+            stream,
+        };
+        let mut handler = match conn.conn_ref.service.id {
+            ServiceID::ChatNode => {
+                // TODO: introduce genmatch from_inner
+                ConnectionHandler::ChatNode(GlobalChatHandler::new(conn))
+            }
+            /*
+            ServiceID::ChatNode => {
+                init_start_handler!(self, ConnectionHandler::ChatNode, GlobalChatHandler).await
+            }
+            ServiceID::LoginSvr => {
+                init_start_handler!(self, ConnectionHandler::LoginSvr, GlobalLoginHandler).await
+            }
+            ServiceID::AgentShop => {
+                init_start_handler!(self, ConnectionHandler::AgentShop, GlobalAgentShopHandler)
+                    .await
+            }
+            ServiceID::WorldSvr => {
+                init_start_handler!(self, ConnectionHandler::WorldSvr, GlobalWorldHandler).await
+            }*/
+            service_id => {
+                bail!("{self}: Unexpected connection from service {service_id:?}");
+            }
+        };
+
+        handler.handle().await
+    }
 }
 
 struct Connection {
     id: i32,
-    conn_ref: Option<Arc<ConnectionRef>>,
+    conn_ref: Arc<ConnectionRef>,
     listener: Arc<Listener>,
     stream: PacketStream<Async<TcpStream>>,
-    handler: Option<ConnectionHandler>,
 }
 
 const BORROW_MUTEX_SIZE: usize = 16;
@@ -135,12 +194,22 @@ impl ConnectionHandler {
     }
 
     #[genmatch_self(ConnectionHandler)]
+    pub fn conn_mut(&mut self) -> &mut Connection {
+        &mut inner.conn
+    }
+
+    #[genmatch_self(ConnectionHandler)]
     pub fn try_inner_mut<H: 'static>(&mut self) -> Option<&mut H> {
         try_cast!(inner, H, EnumStructType)
     }
 
     pub fn inner_mut<H: 'static>(&mut self) -> &mut H {
         self.try_inner_mut().unwrap()
+    }
+
+    #[genmatch_self(ConnectionHandler)]
+    pub async fn handle(&mut self) -> Result<()> {
+        inner.handle().await
     }
 
     pub fn handler_service<T: 'static>() -> ServiceID {
@@ -162,16 +231,12 @@ impl ConnectionHandler {
 #[derive(Debug)]
 struct ConnectionRef {
     service: pkt_common::Connect,
-    borrower: BorrowMutex<BORROW_MUTEX_SIZE, Connection>,
+    borrower: BorrowMutex<BORROW_MUTEX_SIZE, ConnectionHandler>,
 }
 
 impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if let Some(handle) = &self.conn_ref {
-            write!(f, "Conn #{} ({})", self.id, handle.service)
-        } else {
-            write!(f, "Conn #{}", self.id)
-        }
+        write!(f, "Conn #{} ({})", self.id, self.conn_ref.service)
     }
 }
 
@@ -191,56 +256,12 @@ macro_rules! init_start_handler {
 }
 
 impl Connection {
-    async fn handle(mut self: Box<Connection>) -> Result<()> {
-        let p = self.stream.recv().await.map_err(|e| anyhow!("{self}: Failed to receive the first packet: {e:?}"))?;
-        let Payload::Connect(service) = p else {
-            bail!("{self}: Expected Connect packet, got {p:?}");
-        };
-
-        if let Some(conn) = self.listener.conn_refs.iter().find(|conn| {
-            let s = &conn.service;
-            s.id == service.id
-                && s.world_id == service.world_id
-                && s.channel_id == service.channel_id
-        }) {
-            bail!(
-                "{self}: Received multiple connections from the same service: {service:?}, previous: {:?}",
-                &conn.service
-            );
-        }
-
-        self.conn_ref = Some(Arc::new(ConnectionRef {
-            service,
-            borrower: BorrowMutex::new(),
-        }));
-
-        let service = self.service();
-        match service.id {
-            ServiceID::ChatNode => {
-                init_start_handler!(self, ConnectionHandler::ChatNode, GlobalChatHandler).await
-            }
-            ServiceID::LoginSvr => {
-                init_start_handler!(self, ConnectionHandler::LoginSvr, GlobalLoginHandler).await
-            }
-            ServiceID::AgentShop => {
-                init_start_handler!(self, ConnectionHandler::AgentShop, GlobalAgentShopHandler)
-                    .await
-            }
-            ServiceID::WorldSvr => {
-                init_start_handler!(self, ConnectionHandler::WorldSvr, GlobalWorldHandler).await
-            }
-            _ => {
-                bail!("{self}: Unexpected connection from service {service:?}");
-            }
-        }
-    }
-
     fn service(&self) -> &pkt_common::Connect {
-        &self.conn_ref.as_ref().unwrap().service
+        &self.conn_ref.service
     }
 
     fn iter_handlers<H: 'static>(&self) -> impl Stream<Item = BorrowMutexGuardArmed<'_, H>> {
-        let self_handle = self.conn_ref.as_ref().unwrap();
+        let self_handle = &self.conn_ref;
         let iter = self.listener.conn_refs.iter();
         futures::stream::unfold(iter, move |mut iter| async move {
             while let Some(next) = iter.next() {
@@ -248,11 +269,9 @@ impl Connection {
                     continue;
                 }
                 assert!(!Arc::ptr_eq(next, self_handle));
-                if let Ok(conn) = next.borrower.request_borrow().await {
+                if let Ok(handler) = next.borrower.request_borrow().await {
                     return Some((
-                        BorrowMutexGuardArmed::map(conn, |conn| {
-                            conn.handler.as_mut().unwrap().try_inner_mut::<H>().unwrap()
-                        }),
+                        BorrowMutexGuardArmed::map(handler, |handler| handler.inner_mut::<H>()),
                         iter,
                     ));
                 }
