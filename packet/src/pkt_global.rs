@@ -21,9 +21,9 @@ assert_def_packet_size!(RegisterChatSvr, 6);
 pub enum ServerStateEnum {
     #[default]
     Disabled = 0x0, // can't connect
-    Green = 0x1,    // low population
-    Orange = 0x2,   // medium population
-    Red = 0x3,      // population full
+    Green = 0x1,  // low population
+    Orange = 0x2, // medium population
+    Red = 0x3,    // population full
 }
 
 #[packet(0x62)]
@@ -51,7 +51,7 @@ assert_def_packet_size!(ClientVersionNotify, 8);
 #[packet(0xbd5)]
 pub struct DailyQuestResetTime {
     next_daily_reset_time: u32, // unix timestamp, unknown timezone
-    unk2: u32, // usually 0
+    unk2: u32,                  // usually 0
 }
 assert_def_packet_size!(DailyQuestResetTime, 8);
 
@@ -126,7 +126,7 @@ packet_alias!(WorldServerState, ServerState);
 
 #[packet]
 pub struct LoginServerNode {
-    id: u8, // 1 - server id?
+    id: u8,    // 1 - server id?
     stype: u8, // usually 0x10 (set in globalmgrsvr ini)
     unk1: u32, // 0
     groups: BoundVec<1, GroupNode>,
@@ -144,11 +144,11 @@ pub struct GroupNode {
     unk4: u32,
     unk5: u16,
     unk6: u16,
-    unk7: u16, // 0xff later on
-    unk8: u16, // 0x50 max players (set in globalmgrsvr ini)
-    ip: [u8; 4],   // 8f00020a
-    port: u16, // 0x94df
-    state: u32, // 0x5
+    unk7: u16,   // 0xff later on
+    unk8: u16,   // 0x50 max players (set in globalmgrsvr ini)
+    ip: [u8; 4], // 8f00020a
+    port: u16,   // 0x94df
+    state: u32,  // 0x5
 }
 assert_def_packet_size!(GroupNode, 37);
 

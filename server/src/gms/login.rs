@@ -14,13 +14,15 @@ use packet::pkt_global::*;
 use packet::*;
 
 use crate::gms::world::GlobalWorldHandler;
+use crate::gms::ConnectionHandler2;
 
 use super::Connection;
 
 pub struct GlobalLoginHandler {
-    pub conn: Box<Connection>,
+    pub conn: Connection,
     pub notify_user_counts: bool,
 }
+crate::impl_connection_handler!(GlobalLoginHandler);
 
 impl std::fmt::Display for GlobalLoginHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -29,7 +31,7 @@ impl std::fmt::Display for GlobalLoginHandler {
 }
 
 impl GlobalLoginHandler {
-    pub fn new(conn: Box<Connection>) -> Self {
+    pub fn new(conn: Connection) -> Self {
         Self {
             conn,
             notify_user_counts: false,
@@ -37,7 +39,7 @@ impl GlobalLoginHandler {
     }
 
     pub async fn handle(&mut self) -> Result<()> {
-        let conn_ref = self.conn.conn_ref.as_ref().unwrap().clone();
+        let conn_ref = self.conn.conn_ref.clone();
         let service = &conn_ref.service;
 
         #[rustfmt::skip]
@@ -58,7 +60,8 @@ impl GlobalLoginHandler {
                 channel_id: service.channel_id,
                 state: ServerStateEnum::Disabled,
             }))
-            .await.unwrap();
+            .await
+            .unwrap();
 
         loop {
             futures::select! {
@@ -82,7 +85,7 @@ impl GlobalLoginHandler {
                     }
                 }
                 _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                    conn_ref.borrower.lend(&mut self.conn).unwrap().await
+                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler2).unwrap().await;
                 }
             }
 
@@ -212,6 +215,7 @@ impl GlobalLoginHandler {
             .map_err(|e| anyhow!("{self}: request_borrow() failed: {e}"))?;
 
         target_conn
+            .conn_mut()
             .stream
             .send(&target_payload)
             .await

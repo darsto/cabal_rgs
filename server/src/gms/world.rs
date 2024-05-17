@@ -14,14 +14,16 @@ use packet::pkt_global::*;
 use packet::*;
 
 use crate::gms::login::GlobalLoginHandler;
+use crate::gms::ConnectionHandler2;
 
 use super::Connection;
 
 pub struct GlobalWorldHandler {
-    pub conn: Box<Connection>,
+    pub conn: Connection,
     ip_port: OnceCell<([u8; 4], u16)>,
     state: u32,
 }
+crate::impl_connection_handler!(GlobalWorldHandler);
 
 impl std::fmt::Display for GlobalWorldHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -30,7 +32,7 @@ impl std::fmt::Display for GlobalWorldHandler {
 }
 
 impl GlobalWorldHandler {
-    pub fn new(conn: Box<Connection>) -> Self {
+    pub fn new(conn: Connection) -> Self {
         Self {
             conn,
             state: 5, // unknown
@@ -39,7 +41,7 @@ impl GlobalWorldHandler {
     }
 
     pub async fn handle(&mut self) -> Result<()> {
-        let conn_ref = self.conn.conn_ref.as_ref().unwrap().clone();
+        let conn_ref = self.conn.conn_ref.clone();
         let service = &conn_ref.service;
 
         #[rustfmt::skip]
@@ -60,24 +62,28 @@ impl GlobalWorldHandler {
                 channel_id: service.channel_id,
                 state: self.state,
             }))
-            .await.unwrap();
+            .await
+            .unwrap();
 
         let cur_timestamp = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as u32;
-        let next_daily_reset_time = cur_timestamp.next_multiple_of(24 * 3600) - 24 * 3600 + 4 * 3600; /* FIXME: 4h offset is a temporary hack */
+        let next_daily_reset_time =
+            cur_timestamp.next_multiple_of(24 * 3600) - 24 * 3600 + 4 * 3600; /* FIXME: 4h offset is a temporary hack */
         self.conn
             .stream
             .send(&Payload::DailyQuestResetTime(DailyQuestResetTime {
                 next_daily_reset_time,
                 unk2: 0,
             }))
-            .await.unwrap();
+            .await
+            .unwrap();
 
         self.conn
             .stream
             .send(&Payload::AdditionalDungeonInstanceCount(
                 AdditionalDungeonInstanceCount { unk1: 0, unk2: 0 },
             ))
-            .await.unwrap();
+            .await
+            .unwrap();
 
         loop {
             futures::select! {
@@ -101,7 +107,7 @@ impl GlobalWorldHandler {
                     }
                 }
                 _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                    conn_ref.borrower.lend(&mut self.conn).unwrap().await
+                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler2).unwrap().await;
                 }
             }
         }

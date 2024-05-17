@@ -7,13 +7,14 @@ use log::trace;
 use packet::pkt_common::ServiceID;
 use packet::*;
 
-use crate::gms::ConnectionHandler;
+use crate::gms::ConnectionHandler2;
 
 use super::Connection;
 
 pub struct GlobalChatHandler {
     pub conn: Connection,
 }
+crate::impl_connection_handler!(GlobalChatHandler);
 
 impl std::fmt::Display for GlobalChatHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -55,7 +56,7 @@ impl GlobalChatHandler {
                     trace!("{self}: Got packet: {p:?}");
                 }
                 _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                    conn_ref.borrower.lend(&mut self).unwrap().await;
+                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler2).unwrap().await;
                 }
             }
         }

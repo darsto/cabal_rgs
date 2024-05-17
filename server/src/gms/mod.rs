@@ -12,7 +12,7 @@ use log::{error, info};
 use packet::pkt_common::ServiceID;
 use packet::*;
 
-use std::any::TypeId;
+use core::any::{Any, TypeId};
 use std::fmt::Display;
 use std::net::TcpStream;
 use std::os::fd::AsRawFd;
@@ -131,25 +131,12 @@ impl Listener {
             listener: self.clone(),
             stream,
         };
+        // TODO: introduce `from_inner` inside the genmatch crate
         let mut handler = match conn.conn_ref.service.id {
-            ServiceID::ChatNode => {
-                // TODO: introduce genmatch from_inner
-                ConnectionHandler::ChatNode(GlobalChatHandler::new(conn))
-            }
-            /*
-            ServiceID::ChatNode => {
-                init_start_handler!(self, ConnectionHandler::ChatNode, GlobalChatHandler).await
-            }
-            ServiceID::LoginSvr => {
-                init_start_handler!(self, ConnectionHandler::LoginSvr, GlobalLoginHandler).await
-            }
-            ServiceID::AgentShop => {
-                init_start_handler!(self, ConnectionHandler::AgentShop, GlobalAgentShopHandler)
-                    .await
-            }
-            ServiceID::WorldSvr => {
-                init_start_handler!(self, ConnectionHandler::WorldSvr, GlobalWorldHandler).await
-            }*/
+            ServiceID::ChatNode => ConnectionHandler::ChatNode(GlobalChatHandler::new(conn)),
+            ServiceID::LoginSvr => ConnectionHandler::LoginSvr(GlobalLoginHandler::new(conn)),
+            ServiceID::AgentShop => ConnectionHandler::AgentShop(GlobalAgentShopHandler::new(conn)),
+            ServiceID::WorldSvr => ConnectionHandler::WorldSvr(GlobalWorldHandler::new(conn)),
             service_id => {
                 bail!("{self}: Unexpected connection from service {service_id:?}");
             }
@@ -228,10 +215,43 @@ impl ConnectionHandler {
     }
 }
 
+trait ConnectionHandler2: AsAny + std::fmt::Display {
+    fn conn(&self) -> &Connection;
+    fn conn_mut(&mut self) -> &mut Connection;
+}
+
+trait AsAny: Any {
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+
+impl<T: Any> AsAny for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+#[macro_export]
+macro_rules! impl_connection_handler {
+    ($handler:ident) => {
+        impl $crate::gms::ConnectionHandler2 for $handler {
+            fn conn(&self) -> &Connection {
+                &self.conn
+            }
+            fn conn_mut(&mut self) -> &mut Connection {
+                &mut self.conn
+            }
+        }
+    };
+}
+
 #[derive(Debug)]
 struct ConnectionRef {
     service: pkt_common::Connect,
-    borrower: BorrowMutex<BORROW_MUTEX_SIZE, ConnectionHandler>,
+    borrower: BorrowMutex<BORROW_MUTEX_SIZE, dyn ConnectionHandler2>,
 }
 
 impl Display for Connection {
@@ -271,7 +291,9 @@ impl Connection {
                 assert!(!Arc::ptr_eq(next, self_handle));
                 if let Ok(handler) = next.borrower.request_borrow().await {
                     return Some((
-                        BorrowMutexGuardArmed::map(handler, |handler| handler.inner_mut::<H>()),
+                        BorrowMutexGuardArmed::map(handler, |handler| {
+                            handler.as_any_mut().downcast_mut::<H>().unwrap()
+                        }),
                         iter,
                     ));
                 }

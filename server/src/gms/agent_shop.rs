@@ -7,11 +7,14 @@ use log::trace;
 use packet::pkt_common::*;
 use packet::*;
 
+use crate::gms::ConnectionHandler2;
+
 use super::Connection;
 
 pub struct GlobalAgentShopHandler {
-    pub conn: Box<Connection>,
+    pub conn: Connection,
 }
+crate::impl_connection_handler!(GlobalAgentShopHandler);
 
 impl std::fmt::Display for GlobalAgentShopHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -20,12 +23,12 @@ impl std::fmt::Display for GlobalAgentShopHandler {
 }
 
 impl GlobalAgentShopHandler {
-    pub fn new(conn: Box<Connection>) -> Self {
+    pub fn new(conn: Connection) -> Self {
         Self { conn }
     }
 
     pub async fn handle(&mut self) -> Result<()> {
-        let conn_ref = self.conn.conn_ref.as_ref().unwrap().clone();
+        let conn_ref = self.conn.conn_ref.clone();
         let service = &conn_ref.service;
 
         #[rustfmt::skip]
@@ -50,7 +53,7 @@ impl GlobalAgentShopHandler {
                     trace!("{self}: Got packet: {p:?}");
                 }
                 _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                    conn_ref.borrower.lend(&mut self.conn).unwrap().await
+                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler2).unwrap().await;
                 }
             }
         }
