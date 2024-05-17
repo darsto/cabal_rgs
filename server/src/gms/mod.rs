@@ -121,13 +121,12 @@ impl Listener {
                 );
         }
 
-        let conn_ref = Arc::new(ConnectionRef {
-            service,
-            borrower: BorrowMutex::new(),
-        });
         let conn = Connection {
             id,
-            conn_ref,
+            conn_ref: Arc::new(ConnectionRef {
+                service,
+                borrower: BorrowMutex::new(),
+            }),
             listener: self.clone(),
             stream,
         };
@@ -258,21 +257,6 @@ impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Conn #{} ({})", self.id, self.conn_ref.service)
     }
-}
-
-#[macro_export]
-macro_rules! init_start_handler {
-    ($conn:ident, $handler_type:expr, $handler_struct:ident) => {{
-        let conn_ref = $conn.conn_ref.as_ref().unwrap().clone();
-        let listener = $conn.listener.clone();
-        let conn_ptr: *mut Connection = $conn.as_mut();
-
-        let handler = $handler_type($handler_struct::new($conn));
-        let handler = unsafe { &mut *conn_ptr }.handler.insert(handler);
-
-        listener.conn_refs.push(conn_ref).unwrap();
-        handler.inner_mut::<$handler_struct>().handle()
-    }};
 }
 
 impl Connection {
