@@ -7,7 +7,6 @@ use crate::ThreadLocalExecutor;
 use borrow_mutex::{BorrowMutex, BorrowMutexGuardArmed};
 use clap::Parser;
 use futures::Stream;
-use genmatch::*;
 use log::{error, info};
 use packet::pkt_common::ServiceID;
 use packet::*;
@@ -121,27 +120,26 @@ impl Listener {
                 );
         }
 
+        let conn_ref = Arc::new(ConnectionRef {
+            service,
+            borrower: BorrowMutex::new(),
+        });
+        self.conn_refs.push(conn_ref.clone()).unwrap();
         let conn = Connection {
             id,
-            conn_ref: Arc::new(ConnectionRef {
-                service,
-                borrower: BorrowMutex::new(),
-            }),
+            conn_ref,
             listener: self.clone(),
             stream,
         };
-        // TODO: introduce `from_inner` inside the genmatch crate
-        let mut handler = match conn.conn_ref.service.id {
-            ServiceID::ChatNode => ConnectionHandler::ChatNode(GlobalChatHandler::new(conn)),
-            ServiceID::LoginSvr => ConnectionHandler::LoginSvr(GlobalLoginHandler::new(conn)),
-            ServiceID::AgentShop => ConnectionHandler::AgentShop(GlobalAgentShopHandler::new(conn)),
-            ServiceID::WorldSvr => ConnectionHandler::WorldSvr(GlobalWorldHandler::new(conn)),
+        match conn.conn_ref.service.id {
+            ServiceID::ChatNode => GlobalChatHandler::new(conn).handle().await,
+            ServiceID::LoginSvr => GlobalLoginHandler::new(conn).handle().await,
+            ServiceID::AgentShop => GlobalAgentShopHandler::new(conn).handle().await,
+            ServiceID::WorldSvr => GlobalWorldHandler::new(conn).handle().await,
             service_id => {
                 bail!("{self}: Unexpected connection from service {service_id:?}");
             }
-        };
-
-        handler.handle().await
+        }
     }
 }
 
@@ -154,63 +152,18 @@ struct Connection {
 
 const BORROW_MUTEX_SIZE: usize = 16;
 
-#[genmatch]
-enum ConnectionHandler {
-    ChatNode(GlobalChatHandler),
-    LoginSvr(GlobalLoginHandler),
-    AgentShop(GlobalAgentShopHandler),
-    WorldSvr(GlobalWorldHandler),
-}
-
-macro_rules! try_cast {
-    ($target: expr, $type_a: path, $type_b: path) => {{
-        if TypeId::of::<$type_a>() == TypeId::of::<$type_b>() {
-            // SAFETY: it's the exact same type
-            Some(unsafe { std::mem::transmute($target) })
-        } else {
-            None
-        }
-    }};
-}
-
-impl ConnectionHandler {
-    #[genmatch_self(ConnectionHandler)]
-    pub fn conn(&self) -> &Connection {
-        &inner.conn
-    }
-
-    #[genmatch_self(ConnectionHandler)]
-    pub fn conn_mut(&mut self) -> &mut Connection {
-        &mut inner.conn
-    }
-
-    #[genmatch_self(ConnectionHandler)]
-    pub fn try_inner_mut<H: 'static>(&mut self) -> Option<&mut H> {
-        try_cast!(inner, H, EnumStructType)
-    }
-
-    pub fn inner_mut<H: 'static>(&mut self) -> &mut H {
-        self.try_inner_mut().unwrap()
-    }
-
-    #[genmatch_self(ConnectionHandler)]
-    pub async fn handle(&mut self) -> Result<()> {
-        inner.handle().await
-    }
-
-    pub fn handler_service<T: 'static>() -> ServiceID {
-        let t_id = TypeId::of::<T>();
-        if t_id == TypeId::of::<GlobalChatHandler>() {
-            ServiceID::ChatNode
-        } else if t_id == TypeId::of::<GlobalLoginHandler>() {
-            ServiceID::LoginSvr
-        } else if t_id == TypeId::of::<GlobalAgentShopHandler>() {
-            ServiceID::AgentShop
-        } else if t_id == TypeId::of::<GlobalWorldHandler>() {
-            ServiceID::WorldSvr
-        } else {
-            ServiceID::None
-        }
+pub fn handler_service<T: 'static>() -> ServiceID {
+    let t_id = TypeId::of::<T>();
+    if t_id == TypeId::of::<GlobalChatHandler>() {
+        ServiceID::ChatNode
+    } else if t_id == TypeId::of::<GlobalLoginHandler>() {
+        ServiceID::LoginSvr
+    } else if t_id == TypeId::of::<GlobalAgentShopHandler>() {
+        ServiceID::AgentShop
+    } else if t_id == TypeId::of::<GlobalWorldHandler>() {
+        ServiceID::WorldSvr
+    } else {
+        ServiceID::None
     }
 }
 
@@ -269,7 +222,7 @@ impl Connection {
         let iter = self.listener.conn_refs.iter();
         futures::stream::unfold(iter, move |mut iter| async move {
             while let Some(next) = iter.next() {
-                if next.service.id != ConnectionHandler::handler_service::<H>() {
+                if next.service.id != handler_service::<H>() {
                     continue;
                 }
                 assert!(!Arc::ptr_eq(next, self_handle));
