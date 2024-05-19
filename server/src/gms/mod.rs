@@ -4,7 +4,7 @@
 use crate::atomic_append_vec::AtomicAppendVec;
 use crate::packet_stream::PacketStream;
 use crate::ThreadLocalExecutor;
-use borrow_mutex::{BorrowMutex, BorrowMutexGuardArmed};
+use borrow_mutex::{BorrowGuardArmed, BorrowMutex};
 use clap::Parser;
 use futures::Stream;
 use log::{error, info};
@@ -217,7 +217,7 @@ impl Connection {
         &self.conn_ref.service
     }
 
-    fn iter_handlers<H: 'static>(&self) -> impl Stream<Item = BorrowMutexGuardArmed<'_, H>> {
+    fn iter_handlers<H: 'static>(&self) -> impl Stream<Item = BorrowGuardArmed<'_, H>> {
         let self_handle = &self.conn_ref;
         let iter = self.listener.conn_refs.iter();
         futures::stream::unfold(iter, move |mut iter| async move {
@@ -228,7 +228,7 @@ impl Connection {
                 assert!(!Arc::ptr_eq(next, self_handle));
                 if let Ok(handler) = next.borrower.request_borrow().await {
                     return Some((
-                        BorrowMutexGuardArmed::map(handler, |handler| {
+                        BorrowGuardArmed::map(handler, |handler| {
                             handler.as_any_mut().downcast_mut::<H>().unwrap()
                         }),
                         iter,
