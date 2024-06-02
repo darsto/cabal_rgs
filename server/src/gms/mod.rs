@@ -18,7 +18,7 @@ use std::os::fd::AsRawFd;
 use std::sync::Weak;
 use std::{net::TcpListener, sync::Arc};
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{bail, Result};
 use smol::Async;
 
 mod chat;
@@ -97,15 +97,10 @@ impl Listener {
     }
 
     async fn handle_new_conn(self: Arc<Listener>, id: i32, stream: Async<TcpStream>) -> Result<()> {
-        let mut stream = PacketStream::new(stream.as_raw_fd(), stream);
-        let p = stream
-            .recv()
+        let stream = PacketStream::new2(stream.as_raw_fd(), stream)
             .await
-            .map_err(|e| anyhow!("{self}: Failed to receive the first packet: {e:?}"))?;
-        let Payload::Connect(service) = p else {
-            bail!("{self}: Expected Connect packet, got {p:?}");
-        };
-
+            .unwrap();
+        let service = &stream.service;
         if let Some(conn) = self.conn_refs.iter().find(|conn| {
             let s = &conn.service;
             s.id == service.id
@@ -119,7 +114,7 @@ impl Listener {
         }
 
         let conn_ref = Arc::new(ConnectionRef {
-            service,
+            service: service.clone(),
             borrower: BorrowMutex::new(),
         });
         self.conn_refs.push(conn_ref.clone()).unwrap();
@@ -189,7 +184,7 @@ impl<T: Any> AsAny for T {
 #[macro_export]
 macro_rules! impl_connection_handler {
     ($handler:ident) => {
-        impl $crate::gms::ConnectionHandler2 for $handler {
+        impl $crate::gms::ConnectionHandler for $handler {
             fn conn(&self) -> &Connection {
                 &self.conn
             }
