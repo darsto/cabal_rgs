@@ -2,8 +2,8 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use std::net::TcpStream;
-use std::pin::pin;
 use std::os::fd::AsRawFd;
+use std::pin::pin;
 
 use anyhow::anyhow;
 use anyhow::bail;
@@ -56,35 +56,6 @@ impl GlobalLoginHandler {
                 ]),
             }))
             .await.unwrap();
-
-        let db_conn = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180)).await.unwrap();
-        let mut db_conn = PacketStream::new(db_conn.as_raw_fd(), db_conn);
-        let db_hello = packet::pkt_common::Connect {
-            id: ServiceID::GlobalMgrSvr,
-            world_id: 0x80,
-            channel_id: 0x0,
-            unk2: 0x0,
-        };
-        db_conn.send(&Payload::Connect(db_hello))
-            .await
-            .unwrap();
-
-        let p = db_conn.recv().await.unwrap();
-        let Payload::ConnectAck(p) = p else {
-            panic!("{self}: Expected ConnectAck packet, got {p:?}");
-        };
-
-        db_conn
-        .send(&Payload::AdditionalDungeonInstanceCount(
-            AdditionalDungeonInstanceCount { unk1: 1, unk2: 0 },
-        ))
-        .await
-        .unwrap();
-
-        let p = db_conn.recv().await.unwrap();
-        let Payload::AdditionalDungeonInstanceCount(p) = p else {
-            panic!("{self}: Expected AdditionalDungeonInstanceCount packet, got {p:?}");
-        };
 
         self.conn
             .stream
