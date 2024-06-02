@@ -165,11 +165,13 @@ pub fn handler_service<T: 'static>() -> ServiceID {
     }
 }
 
+#[allow(dead_code)]
 trait ConnectionHandler2: AsAny + std::fmt::Display {
     fn conn(&self) -> &Connection;
     fn conn_mut(&mut self) -> &mut Connection;
 }
 
+#[allow(dead_code)]
 trait AsAny: Any {
     fn as_any(&self) -> &dyn Any;
     fn as_any_mut(&mut self) -> &mut dyn Any;

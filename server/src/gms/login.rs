@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2024 Darek Stojaczyk
 
-use std::net::TcpStream;
-use std::os::fd::AsRawFd;
 use std::pin::pin;
 
 use anyhow::anyhow;
@@ -10,15 +8,13 @@ use anyhow::bail;
 use anyhow::Result;
 use futures::FutureExt;
 use futures::StreamExt;
-use log::{error, trace};
+use log::error;
 use packet::pkt_common::*;
 use packet::pkt_global::*;
 use packet::*;
-use smol::Async;
 
 use crate::gms::world::GlobalWorldHandler;
 use crate::gms::ConnectionHandler2;
-use crate::packet_stream::PacketStream;
 
 use super::Connection;
 

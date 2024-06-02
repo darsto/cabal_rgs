@@ -3,7 +3,6 @@
 
 use anyhow::{anyhow, Result};
 use futures::FutureExt;
-use log::trace;
 use packet::pkt_common::*;
 use packet::*;
 
@@ -47,10 +46,9 @@ impl GlobalAgentShopHandler {
         loop {
             futures::select! {
                 p = self.conn.stream.recv().fuse() => {
-                    let p = p.map_err(|e| {
+                    let _ = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")
                     })?;
-                    //trace!("{self}: Got packet: {p:?}");
                 }
                 _ = conn_ref.borrower.wait_to_lend().fuse() => {
                     conn_ref.borrower.lend(self as &mut dyn ConnectionHandler2).unwrap().await;
