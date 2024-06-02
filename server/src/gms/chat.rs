@@ -3,6 +3,7 @@
 
 use anyhow::{anyhow, bail, Result};
 use futures::FutureExt;
+use log::warn;
 use packet::pkt_common::ServiceID;
 use packet::*;
 
@@ -49,9 +50,10 @@ impl GlobalChatHandler {
         loop {
             futures::select! {
                 p = self.conn.stream.recv().fuse() => {
-                    let _ = p.map_err(|e| {
+                    let p = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")
                     })?;
+                    warn!("{self}: Got unexpected packet: {p:?}");
                 }
                 _ = conn_ref.borrower.wait_to_lend().fuse() => {
                     conn_ref.borrower.lend(self as &mut dyn ConnectionHandler2).unwrap().await;

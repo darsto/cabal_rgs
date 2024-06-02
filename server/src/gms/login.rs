@@ -9,6 +9,7 @@ use anyhow::Result;
 use futures::FutureExt;
 use futures::StreamExt;
 use log::error;
+use log::warn;
 use packet::pkt_common::*;
 use packet::pkt_global::*;
 use packet::*;
@@ -80,7 +81,7 @@ impl GlobalLoginHandler {
                             self.handle_route_packet(p).await.unwrap();
                         }
                         _ => {
-                            //trace!("{self}: Got packet: {p:?}");
+                            warn!("{self}: Got unexpected packet: {p:?}");
                         }
                     }
                 }

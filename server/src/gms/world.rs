@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use anyhow::anyhow;
 use anyhow::{bail, Result};
 use futures::{FutureExt, StreamExt};
-use log::trace;
+use log::{trace, warn};
 use packet::pkt_common::*;
 use packet::pkt_global::*;
 use packet::*;
@@ -102,7 +102,7 @@ impl GlobalWorldHandler {
                             self.handle_channel_option_sync(p).await.unwrap();
                         }
                         _ => {
-                            //trace!("{self}: Got packet: {p:?}");
+                            warn!("{self}: Got unexpected packet: {p:?}");
                         }
                     }
                 }
