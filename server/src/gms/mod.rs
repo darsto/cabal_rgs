@@ -166,7 +166,7 @@ pub fn handler_service<T: 'static>() -> ServiceID {
 }
 
 #[allow(dead_code)]
-trait ConnectionHandler2: AsAny + std::fmt::Display {
+trait ConnectionHandler: AsAny + std::fmt::Display {
     fn conn(&self) -> &Connection;
     fn conn_mut(&mut self) -> &mut Connection;
 }
@@ -203,7 +203,7 @@ macro_rules! impl_connection_handler {
 #[derive(Debug)]
 struct ConnectionRef {
     service: pkt_common::Connect,
-    borrower: BorrowMutex<BORROW_MUTEX_SIZE, dyn ConnectionHandler2>,
+    borrower: BorrowMutex<BORROW_MUTEX_SIZE, dyn ConnectionHandler>,
 }
 
 impl Display for Connection {

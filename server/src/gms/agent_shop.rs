@@ -7,7 +7,7 @@ use log::warn;
 use packet::pkt_common::*;
 use packet::*;
 
-use crate::gms::ConnectionHandler2;
+use crate::gms::ConnectionHandler;
 
 use super::Connection;
 
@@ -53,7 +53,7 @@ impl GlobalAgentShopHandler {
                     warn!("{self}: Got unexpected packet: {p:?}");
                 }
                 _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler2).unwrap().await;
+                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler).unwrap().await;
                 }
             }
         }

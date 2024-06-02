@@ -14,7 +14,7 @@ use packet::pkt_global::*;
 use packet::*;
 
 use crate::gms::login::GlobalLoginHandler;
-use crate::gms::ConnectionHandler2;
+use crate::gms::ConnectionHandler;
 
 use super::Connection;
 
@@ -107,7 +107,7 @@ impl GlobalWorldHandler {
                     }
                 }
                 _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler2).unwrap().await;
+                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler).unwrap().await;
                 }
             }
         }
