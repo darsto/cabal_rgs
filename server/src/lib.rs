@@ -13,8 +13,9 @@ pub mod proxy;
 use std::cell::RefCell;
 use std::ops::{Deref, DerefMut};
 
+use futures::Future;
 use log::LevelFilter;
-use smol::LocalExecutor;
+use smol::{LocalExecutor, Task};
 
 pub fn setup_log(is_test: bool) {
     let timestamp_fmt = match is_test {
@@ -65,6 +66,11 @@ impl<'a> ThreadLocalExecutor<'a> {
             // SAFETY: See [`ThreadLocalExecutor::new`]
             unsafe { std::mem::transmute(*ex.borrow()) }
         })
+    }
+
+    pub fn spawn_local<T: 'a>(future: impl Future<Output = T> + 'a) -> Task<T> {
+        let ex = Self::get().unwrap();
+        ex.spawn(future)
     }
 }
 

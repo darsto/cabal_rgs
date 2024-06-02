@@ -83,7 +83,7 @@ impl Listener {
             let (stream, _) = self.tcp_listener.accept().await.unwrap();
             let listener = self.me.upgrade().unwrap();
             // Give the connection handler its own background task
-            smol::spawn(async move {
+            ThreadLocalExecutor::spawn_local(async move {
                 let id = stream.as_raw_fd();
                 info!("Listener: new connection #{id}");
                 if let Err(err) = listener.handle_new_conn(id, stream).await {
