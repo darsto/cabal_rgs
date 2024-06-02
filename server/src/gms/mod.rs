@@ -80,21 +80,19 @@ impl Listener {
             .unwrap();
 
         loop {
-            let (stream, _) = self.tcp_listener.accept().await?;
+            let (stream, _) = self.tcp_listener.accept().await.unwrap();
             let listener = self.me.upgrade().unwrap();
             // Give the connection handler its own background task
-            ThreadLocalExecutor::get()
-                .unwrap()
-                .spawn(async move {
-                    let id = stream.as_raw_fd();
-                    info!("Listener: new connection #{id}");
-                    if let Err(err) = listener.handle_new_conn(id, stream).await {
-                        error!("Listener: connection #{id} error: {err}");
-                    }
-                    info!("Listener: closing connection #{id}");
-                    // TODO remove handle?
-                })
-                .detach();
+            smol::spawn(async move {
+                let id = stream.as_raw_fd();
+                info!("Listener: new connection #{id}");
+                if let Err(err) = listener.handle_new_conn(id, stream).await {
+                    error!("Listener: connection #{id} error: {err}");
+                }
+                info!("Listener: closing connection #{id}");
+                // TODO remove handle?
+            })
+            .detach();
         }
     }
 

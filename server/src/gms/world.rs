@@ -102,7 +102,7 @@ impl GlobalWorldHandler {
                             self.handle_channel_option_sync(p).await.unwrap();
                         }
                         _ => {
-                            trace!("{self}: Got packet: {p:?}");
+                            //trace!("{self}: Got packet: {p:?}");
                         }
                     }
                 }
@@ -119,7 +119,7 @@ impl GlobalWorldHandler {
         self.conn
             .stream
             .send(&Payload::ProfilePathResponse(ProfilePathResponse {
-                unk1: 6 + COUNTER.fetch_add(1, Ordering::Relaxed) as u32, // TODO: test with more than 2 channels
+                unk1: 5 + COUNTER.fetch_add(1, Ordering::Relaxed) as u32, // TODO: test with more than 2 channels
                 scp_id1: 4,
                 scp_path1: Arr::from("Data/Item.scp".as_bytes()),
                 scp_id2: 2,

@@ -56,7 +56,7 @@ impl<T: Unpin + AsyncRead> PacketStream<T> {
 
 impl<T: Unpin + AsyncWrite> PacketStream<T> {
     pub async fn send(&mut self, pkt: &Payload) -> Result<()> {
-        //trace!("{self}: sent pkt: {pkt:?}");
+        trace!("{self}: sent pkt: {pkt:?}");
         self.buf.clear();
         let len = pkt.encode(&mut self.buf)?;
         self.stream.write_all(&self.buf[..len]).await?;

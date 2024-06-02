@@ -53,7 +53,7 @@ impl GlobalChatHandler {
                     let p = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")
                     })?;
-                    trace!("{self}: Got packet: {p:?}");
+                    //trace!("{self}: Got packet: {p:?}");
                 }
                 _ = conn_ref.borrower.wait_to_lend().fuse() => {
                     conn_ref.borrower.lend(self as &mut dyn ConnectionHandler2).unwrap().await;

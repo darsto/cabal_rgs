@@ -63,9 +63,7 @@ async fn start_client_test() {
         channel_id: 0x0,
         unk2: 0x0,
     };
-    conn.send(&Payload::Connect(hello.try_into().unwrap()))
-        .await
-        .unwrap();
+    conn.send(&Payload::Connect(hello)).await.unwrap();
 
     trace!("{PREFIX}: Sent Hello!");
     trace!("{PREFIX}: Waiting for Ack ...");
