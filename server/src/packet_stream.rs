@@ -19,7 +19,7 @@ pub struct PacketStream<T: Unpin> {
 
 impl<T: Unpin> Display for PacketStream<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Conn #{}", self.id)
+        write!(f, "Conn {:?}", self.service.id)
     }
 }
 
@@ -35,15 +35,20 @@ impl<T: Unpin> PacketStream<T> {
 }
 
 impl<T: Unpin + AsyncRead> PacketStream<T> {
-    pub async fn new2(id: i32, stream: T) -> Result<Self, anyhow::Error> {
+    pub async fn from_host(id: i32, stream: T) -> Result<Self, anyhow::Error> {
         let mut stream = Self::new(id, stream);
-        let p = stream
-            .recv()
-            .await
-            .map_err(|e| anyhow!("{stream}: Failed to receive the first packet: {e:?}"))?;
+        let p = stream.recv().await.map_err(|e| {
+            anyhow!(
+                "Conn #{}: Failed to receive the first packet: {e:?}",
+                stream.id
+            )
+        })?;
         let Payload::Connect(service) = p else {
-            bail!("{stream}: Expected Connect packet, got {p:?}");
+            bail!("Conn #{}: Expected Connect packet, got {p:?}", stream.id);
         };
+        if service.id == pkt_common::ServiceID::None {
+            bail!("Conn #{}: Invalid ServiceID", stream.id);
+        }
         stream.service = service;
         Ok(stream)
     }
@@ -70,6 +75,25 @@ impl<T: Unpin + AsyncRead> PacketStream<T> {
 }
 
 impl<T: Unpin + AsyncWrite> PacketStream<T> {
+    pub async fn from_conn(
+        id: i32,
+        stream: T,
+        service: pkt_common::Connect,
+    ) -> Result<Self, anyhow::Error> {
+        let mut stream = Self::new(id, stream);
+
+        stream
+            .send(&Payload::Connect(service.clone()))
+            .await
+            .unwrap();
+
+        if service.id == pkt_common::ServiceID::None {
+            bail!("Conn #{}: Invalid ServiceID", stream.id);
+        }
+        stream.service = service;
+        Ok(stream)
+    }
+
     pub async fn send(&mut self, pkt: &Payload) -> Result<()> {
         trace!("{self}: sent pkt: {pkt:?}");
         self.buf.clear();

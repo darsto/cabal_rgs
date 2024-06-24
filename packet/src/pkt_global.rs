@@ -198,7 +198,7 @@ pub struct ShutdownStatsSet {
 pub struct ChannelOptionSync {
     unk1: u16, // 0?
     unk2: u16, // 65280?
-    unk3: u32, // [80, 0, 0, 0]? only the low 2 bytes are read -> 0
+    unk3: u32, // [0x50, 0, 0, 0]? only the low 2 bytes are read -> 0
     unk4: u32, // 5
 }
 
@@ -245,8 +245,8 @@ assert_def_packet_size!(SubPasswordCheckResponse, 0x2f - Header::SIZE);
 
 #[packet(0xc7c)]
 pub struct MultipleLoginDisconnectRequest {
-    unk1: u32,
-    unk2: u32,
+    unk1: u32, // user id?
+    unk2: u32, // group id?
 }
 // broadcasted to all world servers
 
@@ -255,6 +255,19 @@ pub struct MultipleLoginDisconnectResponse {
     unk1: u32,
     unk2: u32,
 }
+
+#[packet(0x1c)]
+pub struct SetLoginStt {
+    unk1: u32,           // 1? user id?
+    unk2: u32,           // 0x171 on multiple login? 0x13c on normal login
+    unk3: u8,            // hardcoded 0
+    unk4: Arr<u8, 33>,   // username? sometimes junk. Always null-terminated
+    unk6: Arr<u8, 29>,   // hardcoded zeroes, first byte 0x1 on normal login
+    unk7: u8,            // hardcoded 0x14
+    unk8: [u8; 9],       // hardcoded zeroes
+    unk9: Arr<u8, 0xf0>, // zeroes? uninitialized
+}
+assert_def_packet_size!(SetLoginStt, 0x14b - Header::SIZE);
 
 #[cfg(test)]
 mod tests {

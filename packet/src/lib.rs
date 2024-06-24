@@ -63,6 +63,7 @@ pub enum Payload {
     SetLoginInstance(pkt_global::SetLoginInstance),
     SubPasswordCheckRequest(pkt_global::SubPasswordCheckRequest),
     SubPasswordCheckResponse(pkt_global::SubPasswordCheckResponse),
+    SetLoginStt(pkt_global::SetLoginStt),
     MultipleLoginDisconnectRequest(pkt_global::MultipleLoginDisconnectRequest),
     MultipleLoginDisconnectResponse(pkt_global::MultipleLoginDisconnectResponse),
 }

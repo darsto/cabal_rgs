@@ -29,6 +29,8 @@ mod agent_shop;
 use agent_shop::GlobalAgentShopHandler;
 mod world;
 use world::GlobalWorldHandler;
+mod db;
+use db::*;
 
 /// GlobalMgrSvr replacement
 #[derive(Parser, Debug, Default)]
@@ -79,6 +81,43 @@ impl Listener {
             })
             .unwrap();
 
+        let db_conn = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180))
+            .await
+            .unwrap();
+        let listener = self.me.upgrade().unwrap();
+        // Give the connection handler its own background task
+        smol::spawn(async move {
+            let id = db_conn.as_raw_fd();
+            let service = pkt_common::Connect {
+                id: ServiceID::GlobalMgrSvr,
+                world_id: 0x80,
+                channel_id: 0,
+                unk2: 0,
+            };
+            let stream = PacketStream::from_conn(id, db_conn, service.clone())
+                .await
+                .unwrap();
+            let conn_ref = Arc::new(ConnectionRef {
+                service: pkt_common::Connect {
+                    id: ServiceID::DBAgent,
+                    ..service
+                },
+                borrower: BorrowMutex::new(),
+            });
+            listener.conn_refs.push(conn_ref.clone()).unwrap();
+            let conn = Connection {
+                id,
+                conn_ref,
+                listener,
+                stream,
+            };
+            let ret = GlobalDbHandler::new(conn).handle().await;
+
+            info!("Listener: DB connection closed #{id} => {ret:?}");
+            // TODO: reconnect?
+        })
+        .detach();
+
         loop {
             let (stream, _) = self.tcp_listener.accept().await.unwrap();
             let listener = self.me.upgrade().unwrap();
@@ -97,7 +136,7 @@ impl Listener {
     }
 
     async fn handle_new_conn(self: Arc<Listener>, id: i32, stream: Async<TcpStream>) -> Result<()> {
-        let stream = PacketStream::new2(stream.as_raw_fd(), stream)
+        let stream = PacketStream::from_host(stream.as_raw_fd(), stream)
             .await
             .unwrap();
         let service = &stream.service;
@@ -155,13 +194,15 @@ pub fn handler_service<T: 'static>() -> ServiceID {
         ServiceID::AgentShop
     } else if t_id == TypeId::of::<GlobalWorldHandler>() {
         ServiceID::WorldSvr
+    } else if t_id == TypeId::of::<GlobalDbHandler>() {
+        ServiceID::DBAgent
     } else {
         ServiceID::None
     }
 }
 
 #[allow(dead_code)]
-trait ConnectionHandler: AsAny + std::fmt::Display {
+trait ConnectionHandler: AsAny + Send + std::fmt::Display {
     fn conn(&self) -> &Connection;
     fn conn_mut(&mut self) -> &mut Connection;
 }
@@ -192,6 +233,40 @@ macro_rules! impl_connection_handler {
                 &mut self.conn
             }
         }
+        impl $handler {
+            #[allow(dead_code)]
+            async fn lend_self_until<T>(&mut self, future: impl futures::Future<Output = T>) -> T {
+                let conn_ref = self.conn().conn_ref.clone();
+                let mut future = core::pin::pin!(future.fuse());
+                loop {
+                    futures::select! {
+                        ret = future => {
+                            return ret;
+                        }
+                        _ = conn_ref.borrower.wait_to_lend().fuse() => {
+                            conn_ref.borrower.lend(self as &mut dyn ConnectionHandler).unwrap().await;
+                        }
+                    }
+                }
+            }
+        }
+    };
+}
+
+/// Hopefuly we'll see async for loops in stable rust one day
+#[macro_export]
+macro_rules! async_for_each {
+    ($item:ident in $iter:expr => $b:block) => {
+        {
+            let mut iter = core::pin::pin!($iter);
+            while let Some($item) = iter.next().await $b
+        }
+    };
+    (mut $item:ident in $iter:expr => $b:block) => {
+        {
+            let mut iter = core::pin::pin!($iter);
+            while let Some(mut $item) = iter.next().await $b
+        }
     };
 }
 
@@ -207,20 +282,17 @@ impl Display for Connection {
     }
 }
 
-impl Connection {
-    fn service(&self) -> &pkt_common::Connect {
-        &self.conn_ref.service
-    }
-
-    fn iter_handlers<H: 'static>(&self) -> impl Stream<Item = BorrowGuardArmed<'_, H>> {
-        let self_handle = &self.conn_ref;
-        let iter = self.listener.conn_refs.iter();
-        futures::stream::unfold(iter, move |mut iter| async move {
+impl ConnectionRef {
+    fn iter_handlers<'a, H: 'static + Send>(
+        self: &'a Arc<Self>,
+        conn_refs: impl Iterator<Item = &'a Arc<ConnectionRef>>,
+    ) -> impl Stream<Item = BorrowGuardArmed<'a, H>> {
+        futures::stream::unfold(conn_refs, move |mut iter| async {
             while let Some(next) = iter.next() {
                 if next.service.id != handler_service::<H>() {
                     continue;
                 }
-                assert!(!Arc::ptr_eq(next, self_handle));
+                assert!(!Arc::ptr_eq(next, self));
                 if let Ok(handler) = next.borrower.request_borrow().await {
                     return Some((
                         BorrowGuardArmed::map(handler, |handler| {
@@ -232,5 +304,15 @@ impl Connection {
             }
             None
         })
+    }
+}
+
+impl Connection {
+    fn service(&self) -> &pkt_common::Connect {
+        &self.conn_ref.service
+    }
+
+    fn iter_handlers<H: 'static + Send>(&self) -> impl Stream<Item = BorrowGuardArmed<'_, H>> {
+        self.conn_ref.iter_handlers(self.listener.conn_refs.iter())
     }
 }

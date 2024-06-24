@@ -2,7 +2,6 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use std::cell::OnceCell;
-use std::pin::pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::anyhow;
@@ -13,6 +12,7 @@ use packet::pkt_common::*;
 use packet::pkt_global::*;
 use packet::*;
 
+use crate::async_for_each;
 use crate::gms::login::GlobalLoginHandler;
 use crate::gms::ConnectionHandler;
 
@@ -153,13 +153,12 @@ impl GlobalWorldHandler {
         // server. We'll let GlobalLoginHandler do that.
         // In the orignal GMS there should be at most one LoginSvr,
         // but here it doesn't hurt to support more (untested though)
-        while let Some(mut handler) = //
-            pin!(self.conn.iter_handlers::<GlobalLoginHandler>())
-                .next()
-                .await
-        {
-            handler.notify_user_counts = true;
-        }
+        let (conn_ref, listener) = (self.conn.conn_ref.clone(), self.conn.listener.clone());
+        self.lend_self_until(async {
+            async_for_each!(mut handler in conn_ref.iter_handlers::<GlobalLoginHandler>(listener.conn_refs.iter()) => {
+                handler.notify_user_counts = true;
+            });
+        }).await;
 
         Ok(())
     }

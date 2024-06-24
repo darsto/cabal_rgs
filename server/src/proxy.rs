@@ -86,29 +86,25 @@ impl Listener {
             };
 
             // Give the connection handler its own background task
-            ThreadLocalExecutor::get()
-                .unwrap()
-                .spawn(async move {
-                    let id = conn.id;
-                    info!("Listener: new upstream connection #{id}");
+            ThreadLocalExecutor::spawn_local(async move {
+                let id = conn.id;
+                info!("Listener: new upstream connection #{id}");
 
-                    if let Err(err) = conn.recv_upstream().await {
-                        error!("Listener: up connection #{id} error: {err}");
-                    }
-                    info!("Listener: closing upstream connection #{id}");
-                })
-                .detach();
+                if let Err(err) = conn.recv_upstream().await {
+                    error!("Listener: up connection #{id} error: {err}");
+                }
+                info!("Listener: closing upstream connection #{id}");
+            })
+            .detach();
 
-            ThreadLocalExecutor::get()
-                .unwrap()
-                .spawn(async move {
-                    let id = conn2.id;
+            ThreadLocalExecutor::spawn_local(async move {
+                let id = conn2.id;
 
-                    if let Err(err) = conn2.recv_downstream().await {
-                        error!("Listener: dw connection #{id} error: {err}");
-                    }
-                })
-                .detach();
+                if let Err(err) = conn2.recv_downstream().await {
+                    error!("Listener: dw connection #{id} error: {err}");
+                }
+            })
+            .detach();
             // for now the tasks are just dropped, but we might want to
             // wait for them in the future (or send a special shutdown
             // message in each connection)
