@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
+use crate::executor;
 use crate::packet_stream::PacketStream;
-use crate::ThreadLocalExecutor;
 use clap::Parser;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use log::{error, info, trace};
@@ -86,7 +86,7 @@ impl Listener {
             };
 
             // Give the connection handler its own background task
-            ThreadLocalExecutor::spawn_local(async move {
+            executor::spawn_local(async move {
                 let id = conn.id;
                 info!("Listener: new upstream connection #{id}");
 
@@ -97,7 +97,7 @@ impl Listener {
             })
             .detach();
 
-            ThreadLocalExecutor::spawn_local(async move {
+            executor::spawn_local(async move {
                 let id = conn2.id;
 
                 if let Err(err) = conn2.recv_downstream().await {

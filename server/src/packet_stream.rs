@@ -57,20 +57,21 @@ impl<T: Unpin + AsyncRead> PacketStream<T> {
         let mut hdrbuf = [0u8; Header::SIZE];
         self.stream.read_exact(&mut hdrbuf).await?;
         let hdr = Header::decode(&hdrbuf)?;
-        trace!("{self}: got hdr: {hdr:x?}");
 
         let payload_len = hdr.len as u64 - Header::SIZE as u64;
         self.buf.resize(payload_len as usize, 0u8);
         let slice = &mut self.buf[..];
-        self.stream.read_exact(slice).await?;
+        self.stream
+            .read_exact(slice)
+            .await
+            .map_err(|e| anyhow!("{self}: Can't read payload: {e}\n{hdr:?}"))?;
 
         let slice = &self.buf[..];
-        trace!("{self}: got payload: {:x?}", slice);
         let p = Payload::decode(&hdr, slice)
-            .map_err(|e| anyhow!("Can't decode packet {hdr:x?}: {e}\nPayload: {slice:x?}"));
+            .map_err(|e| anyhow!("Can't decode packet {hdr:x?}: {e}\nPayload: {slice:x?}"))?;
 
-        debug!("{self}: decoded packet: {p:?}");
-        p
+        debug!("{self}: Decoded packet: {p:?}");
+        Ok(p)
     }
 }
 

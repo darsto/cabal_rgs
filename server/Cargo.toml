@@ -7,7 +7,7 @@ exclude = ["/.*"]
 [dependencies]
 packet = { path = "../packet" }
 aria = { git = "https://github.com/darsto/aria.git", branch = "master" }
-borrow_mutex = { path = "../../borrow_mutex" }
+borrow_mutex = "0.1.1"
 anyhow = "1.0"
 clap = { version = "4.4", features = ["derive"] }
 num_enum = "0.7"

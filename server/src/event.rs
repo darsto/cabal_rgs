@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
+use crate::executor;
 use crate::packet_stream::PacketStream;
-use crate::ThreadLocalExecutor;
 use clap::Parser;
 use log::{error, info, trace};
 use packet::*;
@@ -46,7 +46,7 @@ impl Listener {
             };
 
             // Give the connection handler its own background task
-            ThreadLocalExecutor::spawn_local(async move {
+            executor::spawn_local(async move {
                 let id = conn.id;
                 info!("Listener: new connection #{id}");
                 if let Err(err) = conn.handle().await {

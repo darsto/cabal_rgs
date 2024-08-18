@@ -2,7 +2,6 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use anyhow::anyhow;
-use anyhow::bail;
 use anyhow::Result;
 use futures::FutureExt;
 use futures::StreamExt;
@@ -83,9 +82,9 @@ impl GlobalLoginHandler {
                             self.handle_system_message(p).await.unwrap();
                         }
                         Payload::RoutePacket(p) => {
-                            self.handle_route_packet(p).await.unwrap();
+                            self.conn.handle_route_packet(p).await.unwrap();
                         }
-                        Payload::SetLoginStt(p) => {
+                        Payload::SetLoginInstance(p) => {
                             self.handle_login_stt(p).await.unwrap();
                         }
                         Payload::MultipleLoginDisconnectRequest(p) => {
@@ -112,7 +111,7 @@ impl GlobalLoginHandler {
         // Gather the channels
         // TODO: group those into game servers; for now we assume only 1 server
         let mut groups = Vec::new();
-        async_for_each!(conn in self.conn.iter_handlers::<GlobalWorldHandler>() => {
+        async_for_each!(mut conn in self.conn.iter_handlers::<GlobalWorldHandler>() => {
             if let Some(group) = conn.group_node() {
                 groups.push(group);
             }
@@ -148,12 +147,14 @@ impl GlobalLoginHandler {
             });
         }
 
+        /*
         servers.push(LoginServerNode {
             id: 0x80,
             stype: 0,
             unk1: 0,
             groups: Vec::new().into(),
         });
+        */
 
         if let Err(e) = self
             .conn
@@ -190,54 +191,14 @@ impl GlobalLoginHandler {
         Ok(())
     }
 
-    pub async fn handle_route_packet(&mut self, p: RoutePacket) -> Result<()> {
-        let route_hdr = &p.droute_hdr.route_hdr;
-
-        let Some(conn_ref) = self.conn.listener.conn_refs.iter().find(|conn_ref| {
-            let s = &conn_ref.service;
-            s.world_id == route_hdr.server_id && s.channel_id == route_hdr.group_id
-        }) else {
-            bail!("{self}: Can't find a conn to route to: {route_hdr:?}");
-        };
-
-        let psize = std::mem::size_of_val(&p);
-        let mut bytes = Vec::with_capacity(psize + Header::SIZE);
-        let hdr = Header::new(route_hdr.origin_main_cmd, (psize + Header::SIZE) as u16);
-        let len = Payload::encode_into_std_write(&p, &mut bytes)
-            .map_err(|e| anyhow!("{self}: Failed to reencode packet {e}: {p:?}"))?;
-        let target_payload = Payload::decode(&hdr, &bytes)
-            .map_err(|e| anyhow!("{self}: Failed to decode target packet {e}: {p:?}"))?;
-        assert_eq!(len, psize);
-
-        let mut target_conn = conn_ref
-            .borrower
-            .request_borrow()
-            .await
-            .map_err(|e| anyhow!("{self}: request_borrow() failed: {e}"))?;
-
-        target_conn
-            .conn_mut()
-            .stream
-            .send(&target_payload)
-            .await
-            .map_err(|e| {
-                anyhow!(
-                    "{self}: Failed to forward RoutePacket to {}: {e}",
-                    &*target_conn
-                )
-            })?;
-
-        Ok(())
-    }
-
-    pub async fn handle_login_stt(&mut self, p: SetLoginStt) -> Result<()> {
+    pub async fn handle_login_stt(&mut self, p: SetLoginInstance) -> Result<()> {
         debug!("{self}: New login! {p:?}");
-        let resp = Payload::SetLoginStt(p);
+        let resp = Payload::SetLoginInstance(p);
 
         async_for_each!(mut conn in self.conn.iter_handlers::<GlobalDbHandler>() => {
             if let Err(e) = conn.conn.stream.send(&resp).await {
                 error!(
-                    "{self}: Failed to send SetLoginStt to {}: {e}",
+                    "{self}: Failed to send SetLoginInstance to {}: {e}",
                     conn.conn
                 );
             }
@@ -267,7 +228,7 @@ impl GlobalLoginHandler {
             error!("{self}: Failed to send MultipleLoginDisconnectResponse to Self: {e}");
         }
 
-        let resp = pkt_global::SetLoginStt {
+        let resp = pkt_global::SetLoginInstance {
             unk1: p.unk1,
             unk2: p.unk2,
             unk3: 0,
@@ -279,7 +240,7 @@ impl GlobalLoginHandler {
         };
 
         async_for_each!(mut conn in self.conn.iter_handlers::<GlobalDbHandler>() => {
-            if let Err(e) = conn.conn.stream.send(&Payload::SetLoginStt(resp.clone())).await {
+            if let Err(e) = conn.conn.stream.send(&Payload::SetLoginInstance(resp.clone())).await {
                 error!(
                     "{self}: Failed to send MultipleLoginDisconnectResponse to {}: {e}",
                     conn.conn

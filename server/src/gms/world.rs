@@ -22,6 +22,8 @@ pub struct GlobalWorldHandler {
     pub conn: Connection,
     ip_port: OnceCell<([u8; 4], u16)>,
     state: u32,
+    group_node_unk7: u16,
+    max_players: u16,
 }
 crate::impl_connection_handler!(GlobalWorldHandler);
 
@@ -37,6 +39,8 @@ impl GlobalWorldHandler {
             conn,
             state: 5, // unknown
             ip_port: Default::default(),
+            group_node_unk7: 0,
+            max_players: 0x50,
         }
     }
 
@@ -98,8 +102,17 @@ impl GlobalWorldHandler {
                         Payload::NotifyUserCount(p) => {
                             self.handle_user_count_update(p).await.unwrap();
                         }
+                        Payload::ShutdownStatsSet(p) => {
+                            self.handle_shutdown_stats_set(p).await.unwrap();
+                        }
                         Payload::ChannelOptionSync(p) => {
                             self.handle_channel_option_sync(p).await.unwrap();
+                        }
+                        Payload::RoutePacket(p) => {
+                            self.conn.handle_route_packet(p).await.unwrap();
+                        }
+                        Payload::SubPasswordCheckRequest(p) => {
+                            self.handle_sub_password_check(p).await.unwrap();
                         }
                         _ => {
                             warn!("{self}: Got unexpected packet: {p:?}");
@@ -131,15 +144,6 @@ impl GlobalWorldHandler {
     }
 
     async fn handle_user_count_update(&mut self, p: NotifyUserCount) -> Result<()> {
-        self.conn
-            .stream
-            .send(&Payload::ChangeServerState(ChangeServerState {
-                server_id: self.conn.service().world_id,
-                channel_id: self.conn.service().channel_id,
-                state: ServerStateEnum::Disabled,
-            }))
-            .await?;
-
         let ip_port = (p.ip, p.port);
         let prev_ip_port = self.ip_port.get_or_init(|| ip_port);
         if prev_ip_port != &ip_port {
@@ -163,8 +167,12 @@ impl GlobalWorldHandler {
         Ok(())
     }
 
-    pub fn group_node(&self) -> Option<GroupNode> {
-        self.ip_port.get().map(|ip_port| GroupNode {
+    pub fn group_node(&mut self) -> Option<GroupNode> {
+        let ip_port = self.ip_port.get()?;
+
+        let unk7 = self.group_node_unk7;
+        self.group_node_unk7 = 0xff00;
+        Some(GroupNode {
             id: self.conn.service().channel_id,
             unk0: 0,
             unk1: 0,
@@ -173,16 +181,46 @@ impl GlobalWorldHandler {
             unk4: 0,
             unk5: 0,
             unk6: 0,
-            unk7: 0,
-            unk8: 0,
+            unk7,
+            max_players: 0x50, // max players
             ip: ip_port.0,
             port: ip_port.1,
             state: self.state,
         })
     }
 
+    pub async fn handle_shutdown_stats_set(&mut self, p: ShutdownStatsSet) -> Result<()> {
+        trace!("{self}: {p:?}");
+        Ok(())
+    }
+
     pub async fn handle_channel_option_sync(&mut self, p: ChannelOptionSync) -> Result<()> {
         trace!("{self}: {p:?}");
+        self.group_node_unk7 = p.unk2;
+        self.max_players = p.unk3 as u16;
+        self.state = p.unk4;
+        Ok(())
+    }
+
+    pub async fn handle_sub_password_check(&mut self, p: SubPasswordCheckRequest) -> Result<()> {
+        trace!("{self}: {p:?}");
+
+        // Never ask for PIN
+        self.conn
+            .stream
+            .send(&Payload::SubPasswordCheckResponse(
+                SubPasswordCheckResponse {
+                    unk1: p.unk1,
+                    auth_needed: 0,
+                    zeroes: Default::default(),
+                    unk2: p.unk2,
+                    unk3: 0x4152,
+                    login_counter: p.login_counter,
+                    unk4: p.unk4,
+                },
+            ))
+            .await?;
+
         Ok(())
     }
 }

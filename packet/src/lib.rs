@@ -60,10 +60,9 @@ pub enum Payload {
     ChannelOptionSync(pkt_global::ChannelOptionSync),
     VerifyLinks(pkt_global::VerifyLinks),
     VerifyLinksResult(pkt_global::VerifyLinksResult),
-    SetLoginInstance(pkt_global::SetLoginInstance),
     SubPasswordCheckRequest(pkt_global::SubPasswordCheckRequest),
     SubPasswordCheckResponse(pkt_global::SubPasswordCheckResponse),
-    SetLoginStt(pkt_global::SetLoginStt),
+    SetLoginInstance(pkt_global::SetLoginInstance),
     MultipleLoginDisconnectRequest(pkt_global::MultipleLoginDisconnectRequest),
     MultipleLoginDisconnectResponse(pkt_global::MultipleLoginDisconnectResponse),
 }
@@ -101,6 +100,9 @@ impl Header {
         if hdr.magic != Header::MAGIC {
             return Err(HeaderDecodeError::InvalidMagic { found: hdr.magic });
         }
+        if (hdr.len as usize) < Header::SIZE {
+            return Err(HeaderDecodeError::TooSmall { size: hdr.len });
+        }
         Ok(hdr)
     }
 }
@@ -112,6 +114,11 @@ pub enum HeaderDecodeError {
         Header::MAGIC
     )]
     InvalidMagic { found: u16 },
+    #[error(
+        "Packet size smaller than header size (Header size {:#04x}, got {size:#04x})",
+        Header::SIZE
+    )]
+    TooSmall { size: u16 },
     #[error("Decoding failed ({0})")]
     DecodeError(#[from] DecodeError),
 }

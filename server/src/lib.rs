@@ -10,15 +10,7 @@ pub mod event;
 pub mod gms;
 pub mod proxy;
 
-use std::borrow::Borrow;
-use std::cell::RefCell;
-use std::ops::{Deref, DerefMut};
-use std::sync::OnceLock;
-
-use futures::Future;
 use log::LevelFilter;
-use smol::lock::OnceCell;
-use smol::{LocalExecutor, Task};
 
 pub fn setup_log(is_test: bool) {
     let timestamp_fmt = match is_test {
@@ -35,17 +27,19 @@ pub fn setup_log(is_test: bool) {
         .init();
 }
 
-/// A per-thread executor. Any thread can create its own, which can be later obtained
-/// in that thread with [`ThreadLocalExecutor::get`]. This utilizes thread local storage.
-///
-/// Currently the executors cannot communicate with each other, although that might
-/// change in future
-pub struct ThreadLocalExecutor;
+pub mod executor {
+    use futures::Future;
+    use smol::{LocalExecutor, Task};
 
-impl ThreadLocalExecutor {
-    pub fn spawn_local<F: Future<Output = T> + 'static + Send, T: 'static + Send>(
-        future: F,
-    ) -> Task<T> {
-        smol::spawn(future)
+    thread_local! {
+        static ASYNC_EX: LocalExecutor<'static> = LocalExecutor::new();
+    }
+
+    pub fn spawn_local<F: Future<Output = T> + 'static, T: 'static>(future: F) -> Task<T> {
+        ASYNC_EX.with(|ex| ex.spawn(future))
+    }
+
+    pub fn run_until<F: Future<Output = T> + 'static, T: 'static + Send>(future: F) -> T {
+        ASYNC_EX.with(|ex| futures::executor::block_on(ex.run(future)))
     }
 }

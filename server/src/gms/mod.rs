@@ -2,8 +2,8 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use crate::atomic_append_vec::AtomicAppendVec;
+use crate::executor;
 use crate::packet_stream::PacketStream;
-use crate::ThreadLocalExecutor;
 use borrow_mutex::{BorrowGuardArmed, BorrowMutex};
 use clap::Parser;
 use futures::Stream;
@@ -18,7 +18,7 @@ use std::os::fd::AsRawFd;
 use std::sync::Weak;
 use std::{net::TcpListener, sync::Arc};
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use smol::Async;
 
 mod chat;
@@ -122,7 +122,7 @@ impl Listener {
             let (stream, _) = self.tcp_listener.accept().await.unwrap();
             let listener = self.me.upgrade().unwrap();
             // Give the connection handler its own background task
-            ThreadLocalExecutor::spawn_local(async move {
+            executor::spawn_local(async move {
                 let id = stream.as_raw_fd();
                 info!("Listener: new connection #{id}");
                 if let Err(err) = listener.handle_new_conn(id, stream).await {
@@ -180,6 +180,12 @@ struct Connection {
     conn_ref: Arc<ConnectionRef>,
     listener: Arc<Listener>,
     stream: PacketStream<Async<TcpStream>>,
+}
+
+impl Display for Connection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Conn #{} ({})", self.id, self.conn_ref.service)
+    }
 }
 
 const BORROW_MUTEX_SIZE: usize = 16;
@@ -276,12 +282,6 @@ struct ConnectionRef {
     borrower: BorrowMutex<BORROW_MUTEX_SIZE, dyn ConnectionHandler>,
 }
 
-impl Display for Connection {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Conn #{} ({})", self.id, self.conn_ref.service)
-    }
-}
-
 impl ConnectionRef {
     fn iter_handlers<'a, H: 'static + Send>(
         self: &'a Arc<Self>,
@@ -314,5 +314,51 @@ impl Connection {
 
     fn iter_handlers<H: 'static + Send>(&self) -> impl Stream<Item = BorrowGuardArmed<'_, H>> {
         self.conn_ref.iter_handlers(self.listener.conn_refs.iter())
+    }
+
+    pub async fn handle_route_packet(&mut self, p: pkt_global::RoutePacket) -> Result<()> {
+        let route_hdr = p.droute_hdr.route_hdr.clone();
+
+        let Some(conn_ref) = self.listener.conn_refs.iter().find(|conn_ref| {
+            let s = &conn_ref.service;
+            // original GMS routes IDs 1,1 to WorldSvr1,channel1, not ChatNode or AgentShop
+            // I yet have to see a packet routed to ChatNode/AgentShop to see how it's done
+            (s.id == ServiceID::WorldSvr || s.id == ServiceID::LoginSvr)
+                && s.world_id == route_hdr.server_id
+                && s.channel_id == route_hdr.group_id
+        }) else {
+            bail!("{self}: Can't find a conn to route to: {route_hdr:?}");
+        };
+
+        let mut bytes = Vec::with_capacity(4096);
+        let p = Payload::RoutePacket(p);
+        let len = p
+            .encode(&mut bytes)
+            .map_err(|e| anyhow!("{self}: Failed to reencode packet {e}: {p:?}"))?;
+
+        let mut target_hdr = Header::decode(&bytes[0..Header::SIZE])?;
+        target_hdr.id = route_hdr.origin_main_cmd;
+        let target_payload = Payload::decode(&target_hdr, &bytes[Header::SIZE..len])
+            .map_err(|e| anyhow!("{self}: Failed to decode target packet {e}: {p:?}"))?;
+
+        let mut target_conn = conn_ref
+            .borrower
+            .request_borrow()
+            .await
+            .map_err(|e| anyhow!("{self}: request_borrow() failed: {e}"))?;
+
+        target_conn
+            .conn_mut()
+            .stream
+            .send(&target_payload)
+            .await
+            .map_err(|e| {
+                anyhow!(
+                    "{self}: Failed to forward RoutePacket to {}: {e}",
+                    &*target_conn
+                )
+            })?;
+
+        Ok(())
     }
 }

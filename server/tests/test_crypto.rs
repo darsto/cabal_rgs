@@ -5,8 +5,8 @@ use aria::{BlockExt, BlockSlice};
 use log::{info, trace};
 use packet::pkt_common::ServiceID;
 use packet::{Block, Payload};
+use server::executor;
 use server::packet_stream::PacketStream;
-use server::ThreadLocalExecutor;
 
 use std::net::{TcpListener, TcpStream};
 use std::os::fd::AsRawFd;
@@ -195,11 +195,10 @@ async fn start_server() -> Result<()> {
 fn basic_crypto_mgr() {
     server::setup_log(true);
 
-    let ex = ThreadLocalExecutor::new().unwrap();
-    futures::executor::block_on(ex.run(async {
-        let server_t = ex.spawn(start_server());
+    executor::run_until(async {
+        let server_t = executor::spawn_local(start_server());
         let client_f = start_client_test();
         client_f.await;
         server_t.cancel().await;
-    }));
+    });
 }
