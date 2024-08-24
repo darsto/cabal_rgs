@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use anyhow::anyhow;
 use anyhow::{bail, Result};
+use async_proc::select;
 use futures::{FutureExt, StreamExt};
 use log::{trace, warn};
 use packet::pkt_common::*;
@@ -90,7 +91,7 @@ impl GlobalWorldHandler {
             .unwrap();
 
         loop {
-            futures::select! {
+            select! {
                 p = self.conn.stream.recv().fuse() => {
                     let p = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")

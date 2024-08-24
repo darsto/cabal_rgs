@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Result};
+use async_proc::select;
 use futures::{FutureExt, StreamExt};
 use log::warn;
 use packet::pkt_common::*;
@@ -51,7 +52,7 @@ impl GlobalDbHandler {
 
         let mut interval_10s = Timer::interval(Duration::from_secs(10));
         loop {
-            futures::select! {
+            select! {
                 p = self.conn.stream.recv().fuse() => {
                     let p = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")

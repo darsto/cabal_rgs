@@ -6,6 +6,7 @@ exclude = ["/.*"]
 
 [dependencies]
 packet = { path = "../packet" }
+async_proc = { path = "../async_proc" }
 aria = { git = "https://github.com/darsto/aria.git", branch = "master" }
 borrow_mutex = "0.1.1"
 anyhow = "1.0"

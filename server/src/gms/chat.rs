@@ -2,6 +2,7 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use anyhow::{anyhow, bail, Result};
+use async_proc::select;
 use futures::FutureExt;
 use log::warn;
 use packet::pkt_common::ServiceID;
@@ -48,7 +49,7 @@ impl GlobalChatHandler {
         };
 
         loop {
-            futures::select! {
+            select! {
                 p = self.conn.stream.recv().fuse() => {
                     let p = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")

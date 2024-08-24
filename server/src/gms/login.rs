@@ -3,6 +3,7 @@
 
 use anyhow::anyhow;
 use anyhow::Result;
+use async_proc::select;
 use futures::FutureExt;
 use futures::StreamExt;
 use log::debug;
@@ -66,7 +67,7 @@ impl GlobalLoginHandler {
             .unwrap();
 
         loop {
-            futures::select! {
+            select! {
                 p = self.conn.stream.recv().fuse() => {
                     let p = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")

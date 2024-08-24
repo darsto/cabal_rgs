@@ -245,7 +245,7 @@ macro_rules! impl_connection_handler {
                 let conn_ref = self.conn().conn_ref.clone();
                 let mut future = core::pin::pin!(future.fuse());
                 loop {
-                    futures::select! {
+                    async_proc::select! {
                         ret = future => {
                             return ret;
                         }
