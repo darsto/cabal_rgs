@@ -43,3 +43,20 @@ pub mod executor {
         ASYNC_EX.with(|ex| futures::executor::block_on(ex.run(future)))
     }
 }
+
+/// Hopefuly we'll see async for loops in stable rust one day
+#[macro_export]
+macro_rules! async_for_each {
+    ($item:ident in $iter:expr => $b:block) => {
+        {
+            let mut iter = core::pin::pin!($iter);
+            while let Some($item) = iter.next().await $b
+        }
+    };
+    (mut $item:ident in $iter:expr => $b:block) => {
+        {
+            let mut iter = core::pin::pin!($iter);
+            while let Some(mut $item) = iter.next().await $b
+        }
+    };
+}
