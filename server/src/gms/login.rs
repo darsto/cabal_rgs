@@ -25,7 +25,7 @@ pub struct GlobalLoginHandler {
     pub conn: Connection,
     pub notify_user_counts: bool,
 }
-crate::impl_connection_handler!(GlobalLoginHandler);
+crate::impl_connection_handler!(GlobalLoginHandler, ServiceID::LoginSvr);
 
 impl std::fmt::Display for GlobalLoginHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

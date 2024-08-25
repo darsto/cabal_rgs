@@ -15,7 +15,7 @@ use super::Connection;
 pub struct GlobalAgentShopHandler {
     pub conn: Connection,
 }
-crate::impl_connection_handler!(GlobalAgentShopHandler);
+crate::impl_connection_handler!(GlobalAgentShopHandler, ServiceID::AgentShop);
 
 impl std::fmt::Display for GlobalAgentShopHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

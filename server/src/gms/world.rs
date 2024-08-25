@@ -26,7 +26,7 @@ pub struct GlobalWorldHandler {
     group_node_unk7: u16,
     max_players: u16,
 }
-crate::impl_connection_handler!(GlobalWorldHandler);
+crate::impl_connection_handler!(GlobalWorldHandler, ServiceID::DBAgent);
 
 impl std::fmt::Display for GlobalWorldHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

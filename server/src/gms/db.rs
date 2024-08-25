@@ -19,7 +19,7 @@ pub struct GlobalDbHandler {
     pub conn: Connection,
     pub dung_inst_cnt: Option<pkt_global::AdditionalDungeonInstanceCount>,
 }
-crate::impl_connection_handler!(GlobalDbHandler);
+crate::impl_connection_handler!(GlobalDbHandler, ServiceID::DBAgent);
 
 impl std::fmt::Display for GlobalDbHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

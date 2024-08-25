@@ -190,25 +190,11 @@ impl Display for Connection {
 
 const BORROW_MUTEX_SIZE: usize = 16;
 
-pub fn handler_service<T: 'static>() -> ServiceID {
-    let t_id = TypeId::of::<T>();
-    if t_id == TypeId::of::<GlobalChatHandler>() {
-        ServiceID::ChatNode
-    } else if t_id == TypeId::of::<GlobalLoginHandler>() {
-        ServiceID::LoginSvr
-    } else if t_id == TypeId::of::<GlobalAgentShopHandler>() {
-        ServiceID::AgentShop
-    } else if t_id == TypeId::of::<GlobalWorldHandler>() {
-        ServiceID::WorldSvr
-    } else if t_id == TypeId::of::<GlobalDbHandler>() {
-        ServiceID::DBAgent
-    } else {
-        ServiceID::None
-    }
-}
-
 #[allow(dead_code)]
 trait ConnectionHandler: AsAny + Send + std::fmt::Display {
+    fn service_id() -> ServiceID
+    where
+        Self: Sized;
     fn conn(&self) -> &Connection;
     fn conn_mut(&mut self) -> &mut Connection;
 }
@@ -230,8 +216,11 @@ impl<T: Any> AsAny for T {
 
 #[macro_export]
 macro_rules! impl_connection_handler {
-    ($handler:ident) => {
+    ($handler:ident, $service_id:expr) => {
         impl $crate::gms::ConnectionHandler for $handler {
+            fn service_id() -> ServiceID {
+                $service_id
+            }
             fn conn(&self) -> &Connection {
                 &self.conn
             }
@@ -243,7 +232,7 @@ macro_rules! impl_connection_handler {
             #[allow(dead_code)]
             async fn lend_self_until<T>(&mut self, future: impl futures::Future<Output = T>) -> T {
                 let conn_ref = self.conn().conn_ref.clone();
-                let mut future = core::pin::pin!(future.fuse());
+                let future = core::pin::pin!(future.fuse());
                 loop {
                     async_proc::select! {
                         ret = future => {
@@ -266,13 +255,13 @@ struct ConnectionRef {
 }
 
 impl ConnectionRef {
-    fn iter_handlers<'a, H: 'static + Send>(
+    fn iter_handlers<'a, H: ConnectionHandler>(
         self: &'a Arc<Self>,
         conn_refs: impl Iterator<Item = &'a Arc<ConnectionRef>>,
     ) -> impl Stream<Item = BorrowGuardArmed<'a, H>> {
         futures::stream::unfold(conn_refs, move |mut iter| async {
             while let Some(next) = iter.next() {
-                if next.service.id != handler_service::<H>() {
+                if next.service.id != H::service_id() {
                     continue;
                 }
                 assert!(!Arc::ptr_eq(next, self));
@@ -295,7 +284,7 @@ impl Connection {
         &self.conn_ref.service
     }
 
-    fn iter_handlers<H: 'static + Send>(&self) -> impl Stream<Item = BorrowGuardArmed<'_, H>> {
+    fn iter_handlers<H: ConnectionHandler>(&self) -> impl Stream<Item = BorrowGuardArmed<'_, H>> {
         self.conn_ref.iter_handlers(self.listener.conn_refs.iter())
     }
 

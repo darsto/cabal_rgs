@@ -15,7 +15,7 @@ use super::Connection;
 pub struct GlobalChatHandler {
     pub conn: Connection,
 }
-crate::impl_connection_handler!(GlobalChatHandler);
+crate::impl_connection_handler!(GlobalChatHandler, ServiceID::ChatNode);
 
 impl std::fmt::Display for GlobalChatHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
