@@ -4,7 +4,6 @@ members = [
     "packet_proc",
     "packet",
     "server",
-    "async_proc",
 ]
 
 [profile.release]

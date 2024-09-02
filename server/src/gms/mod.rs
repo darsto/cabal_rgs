@@ -232,7 +232,7 @@ macro_rules! impl_connection_handler {
             #[allow(dead_code)]
             async fn lend_self_until<T>(&mut self, future: impl futures::Future<Output = T>) -> T {
                 let conn_ref = self.conn().conn_ref.clone();
-                let future = core::pin::pin!(future.fuse());
+                let mut future = core::pin::pin!(future.fuse());
                 loop {
                     async_proc::select! {
                         ret = future => {
