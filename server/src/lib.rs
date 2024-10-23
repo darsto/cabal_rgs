@@ -4,6 +4,7 @@
 pub mod args;
 pub mod atomic_append_vec;
 pub mod packet_stream;
+pub mod registry;
 
 pub mod crypto;
 pub mod event;

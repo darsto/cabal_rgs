@@ -8,20 +8,18 @@ use log::warn;
 use packet::pkt_common::ServiceID;
 use packet::*;
 
-use crate::gms::ConnectionHandler;
-
 use super::Connection;
+use crate::registry::Entry;
 
 pub struct GlobalChatHandler {
     pub conn: Connection,
 }
-crate::impl_connection_handler!(GlobalChatHandler, ServiceID::ChatNode);
-
-impl std::fmt::Display for GlobalChatHandler {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.conn)
-    }
-}
+crate::impl_registry_entry!(
+    GlobalChatHandler,
+    pkt_common::Connect,
+    .conn.stream.service,
+    .conn.conn_ref
+);
 
 impl GlobalChatHandler {
     pub fn new(conn: Connection) -> Self {
@@ -30,7 +28,7 @@ impl GlobalChatHandler {
 
     pub async fn handle(&mut self) -> Result<()> {
         let conn_ref = self.conn.conn_ref.clone();
-        let service = &conn_ref.service;
+        let service = &conn_ref.data;
 
         #[rustfmt::skip]
         self.conn.stream
@@ -56,10 +54,16 @@ impl GlobalChatHandler {
                     })?;
                     warn!("{self}: Got unexpected packet: {p:?}");
                 }
-                _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler).unwrap().await;
+                _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
+                    self.lend_self().await;
                 }
             }
         }
+    }
+}
+
+impl std::fmt::Display for GlobalChatHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.conn)
     }
 }

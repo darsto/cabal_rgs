@@ -11,7 +11,7 @@ use packet::pkt_common::*;
 use packet::*;
 use smol::Timer;
 
-use crate::gms::ConnectionHandler;
+use crate::registry::Entry;
 
 use super::Connection;
 
@@ -19,13 +19,12 @@ pub struct GlobalDbHandler {
     pub conn: Connection,
     pub dung_inst_cnt: Option<pkt_global::AdditionalDungeonInstanceCount>,
 }
-crate::impl_connection_handler!(GlobalDbHandler, ServiceID::DBAgent);
-
-impl std::fmt::Display for GlobalDbHandler {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.conn)
-    }
-}
+crate::impl_registry_entry!(
+    GlobalDbHandler,
+    pkt_common::Connect,
+    .conn.stream.service,
+    .conn.conn_ref
+);
 
 impl GlobalDbHandler {
     pub fn new(conn: Connection) -> Self {
@@ -36,8 +35,6 @@ impl GlobalDbHandler {
     }
 
     pub async fn handle(&mut self) -> Result<()> {
-        let conn_ref = self.conn.conn_ref.clone();
-
         let p = self
             .conn
             .stream
@@ -73,10 +70,16 @@ impl GlobalDbHandler {
                         .await.unwrap();
                     }
                 }
-                _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler).unwrap().await;
+                _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
+                    self.lend_self().await;
                 }
             }
         }
+    }
+}
+
+impl std::fmt::Display for GlobalDbHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.conn)
     }
 }

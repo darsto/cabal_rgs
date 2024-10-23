@@ -15,7 +15,7 @@ use packet::*;
 
 use crate::async_for_each;
 use crate::gms::login::GlobalLoginHandler;
-use crate::gms::ConnectionHandler;
+use crate::registry::{BorrowRegistry, Entry};
 
 use super::Connection;
 
@@ -26,7 +26,12 @@ pub struct GlobalWorldHandler {
     group_node_unk7: u16,
     max_players: u16,
 }
-crate::impl_connection_handler!(GlobalWorldHandler, ServiceID::DBAgent);
+crate::impl_registry_entry!(
+    GlobalWorldHandler,
+    pkt_common::Connect,
+    .conn.stream.service,
+    .conn.conn_ref
+);
 
 impl std::fmt::Display for GlobalWorldHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -47,7 +52,7 @@ impl GlobalWorldHandler {
 
     pub async fn handle(&mut self) -> Result<()> {
         let conn_ref = self.conn.conn_ref.clone();
-        let service = &conn_ref.service;
+        let service = &conn_ref.data;
 
         #[rustfmt::skip]
         self.conn.stream
@@ -120,8 +125,8 @@ impl GlobalWorldHandler {
                         }
                     }
                 }
-                _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                    conn_ref.borrower.lend(self as &mut dyn ConnectionHandler).unwrap().await;
+                _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
+                    self.lend_self().await;
                 }
             }
         }
@@ -158,12 +163,16 @@ impl GlobalWorldHandler {
         // server. We'll let GlobalLoginHandler do that.
         // In the orignal GMS there should be at most one LoginSvr,
         // but here it doesn't hurt to support more (untested though)
-        let (conn_ref, listener) = (self.conn.conn_ref.clone(), self.conn.listener.clone());
+        let listener = self.conn.listener.clone();
         self.lend_self_until(async {
-            async_for_each!(mut handler in conn_ref.iter_handlers::<GlobalLoginHandler>(listener.conn_refs.iter()) => {
-                handler.notify_user_counts = true;
+            let conns = BorrowRegistry::borrow_multiple::<GlobalLoginHandler>(
+                listener.connections.refs.iter(),
+            );
+            async_for_each!(mut conn in conns => {
+                conn.notify_user_counts = true;
             });
-        }).await;
+        })
+        .await;
 
         Ok(())
     }

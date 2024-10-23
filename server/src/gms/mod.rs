@@ -1,17 +1,15 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2024 Darek Stojaczyk
 
-use crate::atomic_append_vec::AtomicAppendVec;
 use crate::executor;
 use crate::packet_stream::PacketStream;
-use borrow_mutex::{BorrowGuardArmed, BorrowMutex};
+use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Parser;
-use futures::Stream;
 use log::{error, info};
 use packet::pkt_common::ServiceID;
 use packet::*;
 
-use core::any::{Any, TypeId};
+use core::any::TypeId;
 use std::fmt::Display;
 use std::net::TcpStream;
 use std::os::fd::AsRawFd;
@@ -40,7 +38,7 @@ pub struct GmsArgs {}
 pub struct Listener {
     me: Weak<Listener>,
     tcp_listener: Async<TcpListener>,
-    conn_refs: AtomicAppendVec<Arc<ConnectionRef>>,
+    connections: BorrowRegistry<pkt_common::Connect>,
     args: Arc<crate::args::Config>,
 }
 
@@ -58,7 +56,7 @@ impl Listener {
         Arc::new_cyclic(|me| Self {
             me: me.clone(),
             tcp_listener,
-            conn_refs: AtomicAppendVec::with_capacity(16),
+            connections: BorrowRegistry::new("GMS", 16),
             args: args.clone(),
         })
     }
@@ -81,30 +79,35 @@ impl Listener {
             })
             .unwrap();
 
-        let db_conn = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180))
+        let db_stream = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180))
             .await
             .unwrap();
+
         let listener = self.me.upgrade().unwrap();
         // Give the connection handler its own background task
         smol::spawn(async move {
-            let id = db_conn.as_raw_fd();
+            let id = db_stream.as_raw_fd();
             let service = pkt_common::Connect {
                 id: ServiceID::GlobalMgrSvr,
                 world_id: 0x80,
                 channel_id: 0,
                 unk2: 0,
             };
-            let stream = PacketStream::from_conn(id, db_conn, service.clone())
+            let stream = PacketStream::from_conn(id, db_stream, service.clone())
                 .await
                 .unwrap();
-            let conn_ref = Arc::new(ConnectionRef {
-                service: pkt_common::Connect {
-                    id: ServiceID::DBAgent,
-                    ..service
-                },
-                borrower: BorrowMutex::new(),
-            });
-            listener.conn_refs.push(conn_ref.clone()).unwrap();
+
+            let conn_ref = listener
+                .connections
+                .add_borrower(
+                    TypeId::of::<GlobalDbHandler>(),
+                    pkt_common::Connect {
+                        id: ServiceID::DBAgent,
+                        ..service
+                    },
+                )
+                .unwrap();
+
             let conn = Connection {
                 id,
                 conn_ref,
@@ -140,30 +143,40 @@ impl Listener {
             .await
             .unwrap();
         let service = &stream.service;
-        if let Some(conn) = self.conn_refs.iter().find(|conn| {
-            let s = &conn.service;
+        if let Some(conn) = self.connections.refs.iter().find(|conn| {
+            let s = &conn.data;
             s.id == service.id
                 && s.world_id == service.world_id
                 && s.channel_id == service.channel_id
         }) {
             bail!(
                     "{self}: Received multiple connections from the same service: {service:?}, previous: {:?}",
-                    &conn.service
+                    &conn.data
                 );
         }
 
-        let conn_ref = Arc::new(ConnectionRef {
-            service: service.clone(),
-            borrower: BorrowMutex::new(),
-        });
-        self.conn_refs.push(conn_ref.clone()).unwrap();
+        let conn_ref = self
+            .connections
+            .add_borrower(
+                match service.id {
+                    ServiceID::ChatNode => TypeId::of::<GlobalChatHandler>(),
+                    ServiceID::LoginSvr => TypeId::of::<GlobalLoginHandler>(),
+                    ServiceID::AgentShop => TypeId::of::<GlobalAgentShopHandler>(),
+                    ServiceID::WorldSvr => TypeId::of::<GlobalWorldHandler>(),
+                    service_id => {
+                        bail!("{self}: Unexpected connection from service {service_id:?}");
+                    }
+                },
+                service.clone(),
+            )
+            .unwrap();
         let conn = Connection {
             id,
             conn_ref,
             listener: self.clone(),
             stream,
         };
-        match conn.conn_ref.service.id {
+        match conn.conn_ref.data.id {
             ServiceID::ChatNode => GlobalChatHandler::new(conn).handle().await,
             ServiceID::LoginSvr => GlobalLoginHandler::new(conn).handle().await,
             ServiceID::AgentShop => GlobalAgentShopHandler::new(conn).handle().await,
@@ -177,122 +190,27 @@ impl Listener {
 
 struct Connection {
     id: i32,
-    conn_ref: Arc<ConnectionRef>,
+    conn_ref: Arc<BorrowRef<pkt_common::Connect>>,
     listener: Arc<Listener>,
     stream: PacketStream<Async<TcpStream>>,
 }
 
 impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Conn #{} ({})", self.id, self.conn_ref.service)
-    }
-}
-
-const BORROW_MUTEX_SIZE: usize = 16;
-
-#[allow(dead_code)]
-trait ConnectionHandler: AsAny + Send + std::fmt::Display {
-    fn service_id() -> ServiceID
-    where
-        Self: Sized;
-    fn conn(&self) -> &Connection;
-    fn conn_mut(&mut self) -> &mut Connection;
-}
-
-#[allow(dead_code)]
-trait AsAny: Any {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-impl<T: Any> AsAny for T {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-}
-
-#[macro_export]
-macro_rules! impl_connection_handler {
-    ($handler:ident, $service_id:expr) => {
-        impl $crate::gms::ConnectionHandler for $handler {
-            fn service_id() -> ServiceID {
-                $service_id
-            }
-            fn conn(&self) -> &Connection {
-                &self.conn
-            }
-            fn conn_mut(&mut self) -> &mut Connection {
-                &mut self.conn
-            }
-        }
-        impl $handler {
-            #[allow(dead_code)]
-            async fn lend_self_until<T>(&mut self, future: impl futures::Future<Output = T>) -> T {
-                let conn_ref = self.conn().conn_ref.clone();
-                let mut future = core::pin::pin!(future.fuse());
-                loop {
-                    async_proc::select! {
-                        ret = future => {
-                            return ret;
-                        }
-                        _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                            conn_ref.borrower.lend(self as &mut dyn ConnectionHandler).unwrap().await;
-                        }
-                    }
-                }
-            }
-        }
-    };
-}
-
-#[derive(Debug)]
-struct ConnectionRef {
-    service: pkt_common::Connect,
-    borrower: BorrowMutex<BORROW_MUTEX_SIZE, dyn ConnectionHandler>,
-}
-
-impl ConnectionRef {
-    fn iter_handlers<'a, H: ConnectionHandler>(
-        self: &'a Arc<Self>,
-        conn_refs: impl Iterator<Item = &'a Arc<ConnectionRef>>,
-    ) -> impl Stream<Item = BorrowGuardArmed<'a, H>> {
-        futures::stream::unfold(conn_refs, move |mut iter| async {
-            while let Some(next) = iter.next() {
-                if next.service.id != H::service_id() {
-                    continue;
-                }
-                assert!(!Arc::ptr_eq(next, self));
-                if let Ok(handler) = next.borrower.request_borrow().await {
-                    return Some((
-                        BorrowGuardArmed::map(handler, |handler| {
-                            handler.as_any_mut().downcast_mut::<H>().unwrap()
-                        }),
-                        iter,
-                    ));
-                }
-            }
-            None
-        })
+        write!(f, "Conn #{} ({})", self.id, self.conn_ref.data)
     }
 }
 
 impl Connection {
     fn service(&self) -> &pkt_common::Connect {
-        &self.conn_ref.service
-    }
-
-    fn iter_handlers<H: ConnectionHandler>(&self) -> impl Stream<Item = BorrowGuardArmed<'_, H>> {
-        self.conn_ref.iter_handlers(self.listener.conn_refs.iter())
+        &self.conn_ref.data
     }
 
     pub async fn handle_route_packet(&mut self, p: pkt_global::RoutePacket) -> Result<()> {
         let route_hdr = p.droute_hdr.route_hdr.clone();
 
-        let Some(conn_ref) = self.listener.conn_refs.iter().find(|conn_ref| {
-            let s = &conn_ref.service;
+        let Some(conn_ref) = self.listener.connections.refs.iter().find(|conn_ref| {
+            let s = &conn_ref.data;
             // original GMS routes IDs 1,1 to WorldSvr1,channel1, not ChatNode or AgentShop
             // I yet have to see a packet routed to ChatNode/AgentShop to see how it's done
             (s.id == ServiceID::WorldSvr || s.id == ServiceID::LoginSvr)
@@ -320,7 +238,9 @@ impl Connection {
             .map_err(|e| anyhow!("{self}: request_borrow() failed: {e}"))?;
 
         target_conn
-            .conn_mut()
+            .data_mut()
+            .downcast_mut::<Connection>()
+            .unwrap()
             .stream
             .send(&target_payload)
             .await
