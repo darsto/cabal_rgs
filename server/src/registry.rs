@@ -104,12 +104,13 @@ pub trait Entry: AsAny + Send + std::fmt::Display {
         async {
             let conn_ref = self.borrow_ref().clone();
             let mut future = core::pin::pin!(future.fuse());
+            let mut wait_to_lend = core::pin::pin!(conn_ref.borrower.wait_to_lend().fuse());
             loop {
                 async_proc::select! {
                     ret = future => {
                         return ret;
                     }
-                    _ = conn_ref.borrower.wait_to_lend().fuse() => {
+                    _ = wait_to_lend => {
                         conn_ref.borrower.lend(self as &mut dyn Entry<RefData = Self::RefData>).unwrap().await;
                     }
                 }

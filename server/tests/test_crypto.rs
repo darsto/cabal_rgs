@@ -55,7 +55,7 @@ fn xor_block(mut block: Block) -> Block {
 
 async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
-    let mut conn = PacketStream::new(stream.as_raw_fd(), stream);
+    let mut conn = PacketStream::new_buffered(stream.as_raw_fd(), stream);
 
     let hello = packet::pkt_common::Connect {
         id: ServiceID::GlobalMgrSvr,

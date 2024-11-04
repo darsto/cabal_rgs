@@ -5,6 +5,7 @@ use crate::executor;
 use crate::packet_stream::PacketStream;
 use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Parser;
+use futures::io::BufReader;
 use log::{error, info};
 use packet::pkt_common::ServiceID;
 use packet::*;
@@ -85,7 +86,7 @@ impl Listener {
 
         let listener = self.me.upgrade().unwrap();
         // Give the connection handler its own background task
-        smol::spawn(async move {
+        executor::spawn_local(async move {
             let id = db_stream.as_raw_fd();
             let service = pkt_common::Connect {
                 id: ServiceID::GlobalMgrSvr,
@@ -93,9 +94,13 @@ impl Listener {
                 channel_id: 0,
                 unk2: 0,
             };
-            let stream = PacketStream::from_conn(id, db_stream, service.clone())
-                .await
-                .unwrap();
+            let stream = PacketStream::from_conn(
+                id,
+                BufReader::with_capacity(65536, db_stream),
+                service.clone(),
+            )
+            .await
+            .unwrap();
 
             let conn_ref = listener
                 .connections
@@ -139,9 +144,10 @@ impl Listener {
     }
 
     async fn handle_new_conn(self: Arc<Listener>, id: i32, stream: Async<TcpStream>) -> Result<()> {
-        let stream = PacketStream::from_host(stream.as_raw_fd(), stream)
-            .await
-            .unwrap();
+        let stream =
+            PacketStream::from_host(stream.as_raw_fd(), BufReader::with_capacity(65536, stream))
+                .await
+                .unwrap();
         let service = &stream.service;
         if let Some(conn) = self.connections.refs.iter().find(|conn| {
             let s = &conn.data;
@@ -192,7 +198,7 @@ struct Connection {
     id: i32,
     conn_ref: Arc<BorrowRef<pkt_common::Connect>>,
     listener: Arc<Listener>,
-    stream: PacketStream<Async<TcpStream>>,
+    stream: PacketStream<BufReader<Async<TcpStream>>>,
 }
 
 impl Display for Connection {

@@ -1,26 +1,26 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use futures::{AsyncRead, AsyncWrite};
+use futures::{io::BufReader, AsyncBufRead, AsyncRead, AsyncWrite};
 use log::{debug, trace};
 use packet::*;
 
 use anyhow::{anyhow, bail, Result};
-use smol::io::{AsyncReadExt, AsyncWriteExt};
+use smol::io::{AsyncBufReadExt, AsyncWriteExt};
 use std::fmt::Display;
 
+/// A wrapper that reads / writes complete [`Payload`] packets
+/// to the underlying reader / writer.
+///
+/// Note this doesn't implement [`futures::stream::Stream`].
 #[derive(Debug)]
 pub struct PacketStream<T: Unpin> {
     pub id: i32,
     pub service: pkt_common::Connect,
     pub stream: T,
-    pub buf: Vec<u8>,
-}
-
-impl<T: Unpin> Display for PacketStream<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Conn {:?}", self.service.id)
-    }
+    /// Received Header
+    recv_hdr: Option<Header>,
+    send_buf: Vec<u8>,
 }
 
 impl<T: Unpin> PacketStream<T> {
@@ -29,12 +29,19 @@ impl<T: Unpin> PacketStream<T> {
             id,
             service: Default::default(),
             stream,
-            buf: Vec::with_capacity(4096),
+            recv_hdr: None,
+            send_buf: Vec::new(),
         }
     }
 }
 
 impl<T: Unpin + AsyncRead> PacketStream<T> {
+    pub fn new_buffered(id: i32, stream: T) -> PacketStream<BufReader<T>> {
+        PacketStream::<_>::new(id, BufReader::with_capacity(65536, stream))
+    }
+}
+
+impl<T: Unpin + AsyncBufRead> PacketStream<T> {
     pub async fn from_host(id: i32, stream: T) -> Result<Self, anyhow::Error> {
         let mut stream = Self::new(id, stream);
         let p = stream.recv().await.map_err(|e| {
@@ -53,23 +60,47 @@ impl<T: Unpin + AsyncRead> PacketStream<T> {
         Ok(stream)
     }
 
+    /// Try to receive a packet from the stream.
+    /// This is cancellation-safe.
     pub async fn recv(&mut self) -> Result<Payload> {
-        let mut hdrbuf = [0u8; Header::SIZE];
-        self.stream.read_exact(&mut hdrbuf).await?;
-        let hdr = Header::decode(&hdrbuf)?;
+        let hdr = if let Some(hdr) = &self.recv_hdr {
+            hdr
+        } else {
+            let buf = loop {
+                let buf = self.stream.fill_buf().await?;
+                if buf == &[] {
+                    bail!("Connection terminated");
+                }
+                if buf.len() >= Header::SIZE {
+                    break &buf[..Header::SIZE];
+                }
+            };
+            let hdr = Header::decode(buf);
+            self.stream.consume(Header::SIZE);
+            self.recv_hdr.insert(hdr?)
+        };
 
-        let payload_len = hdr.len as u64 - Header::SIZE as u64;
-        self.buf.resize(payload_len as usize, 0u8);
-        let slice = &mut self.buf[..];
-        self.stream
-            .read_exact(slice)
-            .await
-            .map_err(|e| anyhow!("{self}: Can't read payload: {e}\n{hdr:?}"))?;
+        let payload_len = hdr.len as usize - Header::SIZE;
+        let buf = if payload_len == 0 {
+            &[]
+        } else {
+            loop {
+                let buf = self.stream.fill_buf().await?;
+                if buf == &[] {
+                    bail!("Connection terminated while receiving a packet");
+                }
+                if buf.len() >= payload_len {
+                    break &buf[..payload_len];
+                }
+            }
+        };
 
-        let slice = &self.buf[..];
-        let p = Payload::decode(&hdr, slice)
-            .map_err(|e| anyhow!("Can't decode packet {hdr:x?}: {e}\nPayload: {slice:x?}"))?;
+        let p = Payload::decode(&hdr, buf)
+            .map_err(|e| anyhow!("Can't decode packet {hdr:x?}: {e}\nPayload: {buf:x?}"));
+        self.stream.consume(payload_len);
+        self.recv_hdr = None;
 
+        let p = p?;
         debug!("{self}: Decoded packet: {p:?}");
         Ok(p)
     }
@@ -95,11 +126,24 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
         Ok(stream)
     }
 
+    /// Send a packet.
+    /// This is cancellation-safe, although the packet might
+    /// be send incompletely, and further attempts to send more
+    /// packets will immediately fail.
     pub async fn send(&mut self, pkt: &Payload) -> Result<()> {
+        if !self.send_buf.is_empty() {
+            bail!("One of the previous send operations was cancelled. Aborting");
+        }
         trace!("{self}: sent pkt: {pkt:?}");
-        self.buf.clear();
-        let len = pkt.encode(&mut self.buf)?;
-        self.stream.write_all(&self.buf[..len]).await?;
+        let len = pkt.encode(&mut self.send_buf)?;
+        self.stream.write_all(&self.send_buf[..len]).await?;
+        self.send_buf.clear();
         Ok(())
+    }
+}
+
+impl<T: Unpin> Display for PacketStream<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Conn {:?}", self.service.id)
     }
 }

@@ -38,7 +38,7 @@ async fn connect_timeout() -> std::io::Result<Async<TcpStream>> {
 
 async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
-    let mut conn = PacketStream::new(stream.as_raw_fd(), stream);
+    let mut conn = PacketStream::new_buffered(stream.as_raw_fd(), stream);
 
     let world_id = 1;
     let channel_id = 1;

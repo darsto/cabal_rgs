@@ -5,6 +5,7 @@ use crate::packet_stream::PacketStream;
 use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::{executor, impl_registry_entry};
 use clap::Parser;
+use futures::io::BufReader;
 use log::{error, info, trace};
 use packet::*;
 
@@ -54,7 +55,7 @@ impl Listener {
 
             let conn = Connection {
                 id: stream.as_raw_fd(),
-                stream: PacketStream::new(stream.as_raw_fd(), stream),
+                stream: PacketStream::new_buffered(stream.as_raw_fd(), stream),
                 listener: self.me.upgrade().unwrap(),
                 conn_ref,
             };
@@ -78,7 +79,7 @@ impl Listener {
 
 pub struct Connection {
     pub id: i32,
-    pub stream: PacketStream<Async<TcpStream>>,
+    pub stream: PacketStream<BufReader<Async<TcpStream>>>,
     pub listener: Arc<Listener>,
     pub conn_ref: Arc<BorrowRef<usize>>,
 }

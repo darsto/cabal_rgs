@@ -6,6 +6,7 @@ use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::{executor, impl_registry_entry};
 use aria::BlockExt;
 use clap::Parser;
+use futures::io::BufReader;
 use log::{debug, error, info, trace};
 use packet::pkt_common::ServiceID;
 use packet::*;
@@ -50,7 +51,6 @@ impl Listener {
 
         loop {
             let (stream, _) = self.tcp_listener.accept().await?;
-
             let conn_ref = self
                 .connections
                 .add_borrower(TypeId::of::<Connection>(), stream.as_raw_fd() as usize)
@@ -58,7 +58,7 @@ impl Listener {
 
             let conn = Connection {
                 id: stream.as_raw_fd(),
-                stream: PacketStream::new(stream.as_raw_fd(), stream),
+                stream: PacketStream::new_buffered(stream.as_raw_fd(), stream),
                 listener: self.me.upgrade().unwrap(),
                 conn_ref,
                 shortkey: OnceCell::new(),
@@ -89,7 +89,7 @@ fn xor_blocks_mut(blocks: &mut [Block]) {
 
 pub struct Connection {
     pub id: i32,
-    pub stream: PacketStream<Async<TcpStream>>,
+    pub stream: PacketStream<BufReader<Async<TcpStream>>>,
     pub listener: Arc<Listener>,
     pub conn_ref: Arc<BorrowRef<usize>>,
     pub shortkey: OnceCell<aria::Key>,
