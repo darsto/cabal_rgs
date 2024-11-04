@@ -16,9 +16,6 @@ use std::time::Duration;
 use anyhow::Result;
 use smol::{Async, Timer};
 
-/// Log prefix
-const PREFIX: &str = "Client";
-
 async fn connect_timeout() -> std::io::Result<Async<TcpStream>> {
     let mut attempts = 0;
     loop {
@@ -64,12 +61,12 @@ async fn start_client_test() {
     };
     conn.send(&Payload::Connect(hello)).await.unwrap();
 
-    trace!("{PREFIX}: Sent Hello!");
-    trace!("{PREFIX}: Waiting for Ack ...");
+    trace!("Sent Hello!");
+    trace!("Waiting for Ack ...");
 
     let p = conn.recv().await.unwrap();
     let Payload::ConnectAck(ack) = p else {
-        panic!("{PREFIX}: Expected ConnectAck packet, got {p:?}");
+        panic!("Expected ConnectAck packet, got {p:?}");
     };
     let ack = packet::pkt_crypto::ConnectAck::try_from(ack).unwrap();
 
@@ -80,20 +77,20 @@ async fn start_client_test() {
     assert_eq!(ack.unk5, 0x398ab300);
     assert_eq!(ack.unk6, 0x1f);
 
-    trace!("{PREFIX}: Ack received!");
-    trace!("{PREFIX}: Sending Key Request ...");
+    trace!("Ack received!");
+    trace!("Sending Key Request ...");
 
     let req = Payload::EncryptKey2Request(packet::pkt_crypto::EncryptKey2Request {
         key_split_point: 0x1 ^ 0x1f398ab3,
     });
     conn.send(&req).await.unwrap();
 
-    trace!("{PREFIX}: Key Request sent!");
-    trace!("{PREFIX}: Waiting for response ...");
+    trace!("Key Request sent!");
+    trace!("Waiting for response ...");
 
     let p = conn.recv().await.unwrap();
     let Payload::EncryptKey2Response(mut resp) = p else {
-        panic!("{PREFIX}: Expected EncryptKey2Response packet, got {p:?}");
+        panic!("Expected EncryptKey2Response packet, got {p:?}");
     };
 
     assert_eq!(resp.key_split_point, 0x1);
@@ -103,8 +100,8 @@ async fn start_client_test() {
     resp.shortkey.iter_mut().for_each(|b| *b ^= 0xb3);
     resp.shortkey.resize(32, 0x0);
 
-    trace!("{PREFIX}: Response received");
-    trace!("{PREFIX}: Sending Key Auth Request ...");
+    trace!("Response received");
+    trace!("Sending Key Auth Request ...");
 
     let keybuf: [u8; 32] = (&resp.shortkey[0..32]).try_into().unwrap();
     let key = aria::Key::from(keybuf);
@@ -125,12 +122,12 @@ async fn start_client_test() {
     };
     conn.send(&Payload::KeyAuthRequest(req)).await.unwrap();
 
-    trace!("{PREFIX}: Key Auth Request sent!");
-    trace!("{PREFIX}: Waiting for response ...");
+    trace!("Key Auth Request sent!");
+    trace!("Waiting for response ...");
 
     let p = conn.recv().await.unwrap();
     let Payload::KeyAuthResponse(mut resp) = p else {
-        panic!("{PREFIX}: Expected KeyAuthResponse packet, got {p:?}");
+        panic!("Expected KeyAuthResponse packet, got {p:?}");
     };
 
     assert_eq!(resp.unk1, 0x1);
@@ -154,8 +151,8 @@ async fn start_client_test() {
     assert_eq!(resp.enc_warp.try_as_str(), Ok("Data/Warp.scp"));
     assert_eq!(resp.port, 38180);
 
-    trace!("{PREFIX}: Response received");
-    trace!("{PREFIX}: Sending ESYM Request ...");
+    trace!("Response received");
+    trace!("Sending ESYM Request ...");
 
     let req = packet::pkt_crypto::ESYMRequest {
         unk1: 0x0,
@@ -166,19 +163,19 @@ async fn start_client_test() {
         .await
         .unwrap();
 
-    trace!("{PREFIX}: ESYM Request sent!");
-    trace!("{PREFIX}: Waiting for response ...");
+    trace!("ESYM Request sent!");
+    trace!("Waiting for response ...");
 
     let p = conn.recv().await.unwrap();
     let Payload::ESYM(resp) = p else {
-        panic!("{PREFIX}: Expected KeyAuthResponse packet, got {p:?}");
+        panic!("Expected KeyAuthResponse packet, got {p:?}");
     };
 
     let resp = packet::pkt_crypto::ESYMResponse::try_from(resp).unwrap();
-    trace!("{PREFIX}: ESYM resp length: {}", resp.filesize);
-    trace!("{PREFIX}: Reponse received");
+    trace!("ESYM resp length: {}", resp.filesize);
+    trace!("Reponse received");
 
-    info!("{PREFIX}: All done. Exiting");
+    info!("All done. Exiting");
 }
 
 async fn start_server() -> Result<()> {

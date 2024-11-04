@@ -15,9 +15,6 @@ use std::time::Duration;
 use anyhow::Result;
 use smol::{Async, Timer};
 
-/// Log prefix
-const PREFIX: &str = "Client";
-
 async fn connect_timeout() -> std::io::Result<Async<TcpStream>> {
     let mut attempts = 0;
     loop {
@@ -51,8 +48,8 @@ async fn start_client_test() {
     conn.send(&Payload::Connect(hello.try_into().unwrap()))
         .await
         .unwrap();
-    trace!("{PREFIX}: Sent Hello!");
-    trace!("{PREFIX}: Waiting for Ack ...");
+    trace!("Sent Hello!");
+    trace!("Waiting for Ack ...");
 
     let p = conn.recv().await.unwrap();
     let Payload::ConnectAck(ack) = &p else {
@@ -68,8 +65,8 @@ async fn start_client_test() {
     assert_eq!(ack.channel_id, channel_id);
     assert_eq!(ack.unk3, 0x0);
     assert_eq!(ack.unk4, 0x1);
-    trace!("{PREFIX}: Ack received!");
-    trace!("{PREFIX}: Sending Keepalive!");
+    trace!("Ack received!");
+    trace!("Sending Keepalive!");
 
     let keepalive = Payload::Keepalive(packet::pkt_event::Keepalive {});
     conn.send(&keepalive).await.unwrap();
@@ -78,7 +75,7 @@ async fn start_client_test() {
     Timer::after(Duration::from_millis(100)).await;
     conn.send(&keepalive).await.unwrap();
 
-    info!("{PREFIX}: All done. Exiting");
+    info!("All done. Exiting");
 }
 
 async fn start_server() -> Result<()> {
