@@ -2,11 +2,12 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use aria::{BlockExt, BlockSlice};
+use futures::io::BufReader;
 use log::{info, trace};
 use packet::pkt_common::ServiceID;
 use packet::{Block, Payload};
-use server::executor;
 use server::packet_stream::PacketStream;
+use server::{executor, ConnectionID};
 
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -51,17 +52,19 @@ fn xor_block(mut block: Block) -> Block {
 
 async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
-    let mut conn = PacketStream::new_buffered(stream);
+    let mut conn = PacketStream::from_conn(
+        BufReader::with_capacity(65536, stream),
+        ConnectionID {
+            service: ServiceID::GlobalMgrSvr,
+            world_id: 0xfd,
+            channel_id: 0x0,
+            unk2: 0x0,
+        },
+    )
+    .await
+    .unwrap();
 
-    let hello = packet::pkt_common::Connect {
-        id: ServiceID::GlobalMgrSvr,
-        world_id: 0xfd,
-        channel_id: 0x0,
-        unk2: 0x0,
-    };
-    conn.send(&Payload::Connect(hello)).await.unwrap();
-
-    trace!("Sent Hello!");
+    trace!("Connected!");
     trace!("Waiting for Ack ...");
 
     let p = conn.recv().await.unwrap();

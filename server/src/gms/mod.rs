@@ -13,7 +13,6 @@ use packet::*;
 use core::any::TypeId;
 use std::fmt::Display;
 use std::net::TcpStream;
-use std::os::fd::AsRawFd;
 use std::sync::Weak;
 use std::{net::TcpListener, sync::Arc};
 
@@ -87,9 +86,8 @@ impl Listener {
         let listener = self.me.upgrade().unwrap();
         // Give the connection handler its own background task
         executor::spawn_local(async move {
-            let id = db_stream.as_raw_fd();
             let service = pkt_common::Connect {
-                id: ServiceID::GlobalMgrSvr,
+                service: ServiceID::GlobalMgrSvr,
                 world_id: 0x80,
                 channel_id: 0,
                 unk2: 0,
@@ -106,21 +104,20 @@ impl Listener {
                 .add_borrower(
                     TypeId::of::<GlobalDbHandler>(),
                     pkt_common::Connect {
-                        id: ServiceID::DBAgent,
+                        service: ServiceID::DBAgent,
                         ..service
                     },
                 )
                 .unwrap();
 
             let conn = Connection {
-                id,
                 conn_ref,
                 listener,
                 stream,
             };
             let ret = GlobalDbHandler::new(conn).handle().await;
 
-            info!("Listener: DB connection closed #{id} => {ret:?}");
+            info!("Listener: DB connection closed => {ret:?}");
             // TODO: reconnect?
         })
         .detach();
@@ -130,31 +127,35 @@ impl Listener {
             let listener = self.me.upgrade().unwrap();
             // Give the connection handler its own background task
             executor::spawn_local(async move {
-                let id = stream.as_raw_fd();
-                info!("Listener: new connection #{id}");
-                if let Err(err) = listener.handle_new_conn(id, stream).await {
-                    error!("Listener: connection #{id} error: {err}");
+                info!("Listener: new connection ...");
+
+                let stream = PacketStream::from_host(BufReader::with_capacity(65536, stream))
+                    .await
+                    .unwrap();
+                let id = stream.id.clone();
+
+                info!("Listener: {id} connected");
+                if let Err(err) = listener.handle_new_conn(stream).await {
+                    error!("Listener: {id} error: {err}");
                 }
-                info!("Listener: closing connection #{id}");
+                info!("Listener: closing {id}");
                 // TODO remove handle?
             })
             .detach();
         }
     }
 
-    async fn handle_new_conn(self: Arc<Listener>, id: i32, stream: Async<TcpStream>) -> Result<()> {
-        let stream = PacketStream::from_host(BufReader::with_capacity(65536, stream))
-            .await
-            .unwrap();
-        let service = &stream.service;
+    async fn handle_new_conn(
+        self: Arc<Listener>,
+        stream: PacketStream<BufReader<Async<TcpStream>>>,
+    ) -> Result<()> {
+        let id = &stream.id;
         if let Some(conn) = self.connections.refs.iter().find(|conn| {
             let s = &conn.data;
-            s.id == service.id
-                && s.world_id == service.world_id
-                && s.channel_id == service.channel_id
+            s.service == id.service && s.world_id == id.world_id && s.channel_id == id.channel_id
         }) {
             bail!(
-                    "{self}: Received multiple connections from the same service: {service:?}, previous: {:?}",
+                    "{self}: Received multiple connections from the same service: {id:?}, previous: {:?}",
                     &conn.data
                 );
         }
@@ -162,7 +163,7 @@ impl Listener {
         let conn_ref = self
             .connections
             .add_borrower(
-                match service.id {
+                match id.service {
                     ServiceID::ChatNode => TypeId::of::<GlobalChatHandler>(),
                     ServiceID::LoginSvr => TypeId::of::<GlobalLoginHandler>(),
                     ServiceID::AgentShop => TypeId::of::<GlobalAgentShopHandler>(),
@@ -171,16 +172,15 @@ impl Listener {
                         bail!("{self}: Unexpected connection from service {service_id:?}");
                     }
                 },
-                service.clone(),
+                id.clone(),
             )
             .unwrap();
         let conn = Connection {
-            id,
             conn_ref,
             listener: self.clone(),
             stream,
         };
-        match conn.conn_ref.data.id {
+        match conn.conn_ref.data.service {
             ServiceID::ChatNode => GlobalChatHandler::new(conn).handle().await,
             ServiceID::LoginSvr => GlobalLoginHandler::new(conn).handle().await,
             ServiceID::AgentShop => GlobalAgentShopHandler::new(conn).handle().await,
@@ -193,7 +193,6 @@ impl Listener {
 }
 
 struct Connection {
-    id: i32,
     conn_ref: Arc<BorrowRef<pkt_common::Connect>>,
     listener: Arc<Listener>,
     stream: PacketStream<BufReader<Async<TcpStream>>>,
@@ -201,7 +200,7 @@ struct Connection {
 
 impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Conn #{} ({})", self.id, self.conn_ref.data)
+        self.stream.fmt(f)
     }
 }
 
@@ -217,7 +216,7 @@ impl Connection {
             let s = &conn_ref.data;
             // original GMS routes IDs 1,1 to WorldSvr1,channel1, not ChatNode or AgentShop
             // I yet have to see a packet routed to ChatNode/AgentShop to see how it's done
-            (s.id == ServiceID::WorldSvr || s.id == ServiceID::LoginSvr)
+            (s.service == ServiceID::WorldSvr || s.service == ServiceID::LoginSvr)
                 && s.world_id == route_hdr.server_id
                 && s.channel_id == route_hdr.group_id
         }) else {

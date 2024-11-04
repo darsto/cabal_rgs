@@ -56,22 +56,28 @@ impl Listener {
                 .add_borrower(TypeId::of::<Connection>(), stream.as_raw_fd() as usize)
                 .unwrap();
 
-            let conn = Connection {
-                id: stream.as_raw_fd(),
-                stream: PacketStream::new_buffered(stream),
-                listener: self.me.upgrade().unwrap(),
-                conn_ref,
-                shortkey: OnceCell::new(),
-            };
-
             // Give the connection handler its own background task
+            let listener = self.me.upgrade().unwrap();
             executor::spawn_local(async move {
-                let id = conn.id;
-                info!("Listener: new connection #{id}");
+                info!("Listener: new connection ...");
+
+                let stream = PacketStream::from_host(BufReader::with_capacity(65536, stream))
+                    .await
+                    .unwrap();
+                let conn = Connection {
+                    stream,
+                    listener,
+                    conn_ref,
+                    shortkey: OnceCell::new(),
+                };
+                let id = conn.stream.id.clone();
+
+                info!("Listener: {id} connected");
                 if let Err(err) = conn.handle().await {
-                    error!("Listener: connection #{id} error: {err}");
+                    error!("Listener: {id} error: {err}");
+                } else {
+                    info!("Listener: closing {id}");
                 }
-                info!("Listener: closing connection #{id}");
             })
             .detach();
             // for now the tasks are just dropped, but we might want to
@@ -88,7 +94,6 @@ fn xor_blocks_mut(blocks: &mut [Block]) {
 }
 
 pub struct Connection {
-    pub id: i32,
     pub stream: PacketStream<BufReader<Async<TcpStream>>>,
     pub listener: Arc<Listener>,
     pub conn_ref: Arc<BorrowRef<usize>>,
@@ -98,7 +103,7 @@ impl_registry_entry!(Connection, usize, .stream, .conn_ref);
 
 impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Conn #{}", self.id)
+        self.stream.fmt(f)
     }
 }
 
@@ -247,15 +252,8 @@ impl Connection {
     }
 
     pub async fn handle(mut self) -> Result<()> {
-        let p = self.stream.recv().await?;
-        let Payload::Connect(hello) = &p else {
-            bail!("{self}: Expected Connect packet, got {p:?}");
-        };
-
-        assert_eq!(hello.id, ServiceID::GlobalMgrSvr);
-        assert_eq!(hello.world_id, 0xfd);
-
-        trace!("{self}: Got hello: {p:?}");
+        assert_eq!(self.stream.id.service, ServiceID::GlobalMgrSvr);
+        assert_eq!(self.stream.id.world_id, 0xfd);
 
         let ack = packet::pkt_crypto::ConnectAck {
             unk1: 0x0,

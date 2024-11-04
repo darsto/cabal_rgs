@@ -13,6 +13,8 @@ pub mod proxy;
 
 use log::LevelFilter;
 
+pub use packet::pkt_common::Connect as ConnectionID;
+
 pub fn setup_log(is_test: bool) {
     let timestamp_fmt = match is_test {
         false => Some(env_logger::fmt::TimestampPrecision::Millis),

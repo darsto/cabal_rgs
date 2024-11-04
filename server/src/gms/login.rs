@@ -29,7 +29,7 @@ pub struct GlobalLoginHandler {
 crate::impl_registry_entry!(
     GlobalLoginHandler,
     pkt_common::Connect,
-    .conn.stream.service,
+    .conn.stream.id,
     .conn.conn_ref
 );
 

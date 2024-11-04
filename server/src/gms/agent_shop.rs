@@ -18,7 +18,7 @@ pub struct GlobalAgentShopHandler {
 crate::impl_registry_entry!(
     GlobalAgentShopHandler,
     pkt_common::Connect,
-    .conn.stream.service,
+    .conn.stream.id,
     .conn.conn_ref
 );
 

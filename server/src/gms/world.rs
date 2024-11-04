@@ -29,7 +29,7 @@ pub struct GlobalWorldHandler {
 crate::impl_registry_entry!(
     GlobalWorldHandler,
     pkt_common::Connect,
-    .conn.stream.service,
+    .conn.stream.id,
     .conn.conn_ref
 );
 

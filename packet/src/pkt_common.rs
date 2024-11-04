@@ -15,7 +15,7 @@ pub type UnknownPayload = BoundVec<0, u8>;
 
 #[packet(0x5)]
 pub struct Connect {
-    id: ServiceID,
+    service: ServiceID,
     world_id: u8,
     channel_id: u8,
     unk2: u8, // hardcoded 0x0
@@ -23,14 +23,9 @@ pub struct Connect {
 
 impl std::fmt::Display for Connect {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{:?}", self.id))?;
-        use ServiceID as S;
-        #[allow(clippy::single_match)]
-        match self.id {
-            S::WorldSvr => {
-                f.write_fmt(format_args!("s{}c{}", self.world_id, self.channel_id))?;
-            }
-            _ => {}
+        f.write_fmt(format_args!("{:?}", self.service))?;
+        if self.service == ServiceID::WorldSvr {
+            f.write_fmt(format_args!("s{}c{}", self.world_id, self.channel_id))?;
         }
         Ok(())
     }

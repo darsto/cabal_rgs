@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
+use futures::io::BufReader;
 use log::{info, trace};
 use packet::pkt_common::ServiceID;
 use packet::Payload;
-use server::executor;
 use server::packet_stream::PacketStream;
+use server::{executor, ConnectionID};
 
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -34,21 +35,19 @@ async fn connect_timeout() -> std::io::Result<Async<TcpStream>> {
 
 async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
-    let mut conn = PacketStream::new_buffered(stream);
+    let mut conn = PacketStream::from_conn(
+        BufReader::with_capacity(65536, stream),
+        ConnectionID {
+            service: ServiceID::WorldSvr,
+            world_id: 1,
+            channel_id: 1,
+            unk2: 0,
+        },
+    )
+    .await
+    .unwrap();
 
-    let world_id = 1;
-    let channel_id = 1;
-
-    let hello = packet::pkt_common::Connect {
-        id: ServiceID::None,
-        world_id,
-        channel_id,
-        unk2: 0x0,
-    };
-    conn.send(&Payload::Connect(hello.try_into().unwrap()))
-        .await
-        .unwrap();
-    trace!("Sent Hello!");
+    trace!("Connected!");
     trace!("Waiting for Ack ...");
 
     let p = conn.recv().await.unwrap();
@@ -61,8 +60,8 @@ async fn start_client_test() {
         ack.unk2,
         [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00]
     );
-    assert_eq!(ack.world_id, world_id);
-    assert_eq!(ack.channel_id, channel_id);
+    assert_eq!(ack.world_id, conn.id.world_id);
+    assert_eq!(ack.channel_id, conn.id.channel_id);
     assert_eq!(ack.unk3, 0x0);
     assert_eq!(ack.unk4, 0x1);
     trace!("Ack received!");
