@@ -25,7 +25,6 @@ mod helper_types;
 pub use helper_types::*;
 
 #[genmatch]
-#[derive(Debug)]
 pub enum Payload {
     #[attr(ID = _)]
     Unknown(pkt_common::Unknown),
@@ -222,6 +221,13 @@ impl Payload {
 impl Default for Payload {
     fn default() -> Self {
         Payload::Unknown(pkt_common::Unknown::default())
+    }
+}
+
+impl std::fmt::Debug for Payload {
+    #[genmatch_self(Payload)]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        inner.fmt(f)
     }
 }
 
