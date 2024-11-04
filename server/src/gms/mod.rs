@@ -95,7 +95,6 @@ impl Listener {
                 unk2: 0,
             };
             let stream = PacketStream::from_conn(
-                id,
                 BufReader::with_capacity(65536, db_stream),
                 service.clone(),
             )
@@ -144,10 +143,9 @@ impl Listener {
     }
 
     async fn handle_new_conn(self: Arc<Listener>, id: i32, stream: Async<TcpStream>) -> Result<()> {
-        let stream =
-            PacketStream::from_host(stream.as_raw_fd(), BufReader::with_capacity(65536, stream))
-                .await
-                .unwrap();
+        let stream = PacketStream::from_host(BufReader::with_capacity(65536, stream))
+            .await
+            .unwrap();
         let service = &stream.service;
         if let Some(conn) = self.connections.refs.iter().find(|conn| {
             let s = &conn.data;

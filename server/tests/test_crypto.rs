@@ -9,7 +9,6 @@ use server::executor;
 use server::packet_stream::PacketStream;
 
 use std::net::{TcpListener, TcpStream};
-use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -55,7 +54,7 @@ fn xor_block(mut block: Block) -> Block {
 
 async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
-    let mut conn = PacketStream::new_buffered(stream.as_raw_fd(), stream);
+    let mut conn = PacketStream::new_buffered(stream);
 
     let hello = packet::pkt_common::Connect {
         id: ServiceID::GlobalMgrSvr,

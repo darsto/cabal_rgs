@@ -58,7 +58,7 @@ impl Listener {
 
             let conn = Connection {
                 id: stream.as_raw_fd(),
-                stream: PacketStream::new_buffered(stream.as_raw_fd(), stream),
+                stream: PacketStream::new_buffered(stream),
                 listener: self.me.upgrade().unwrap(),
                 conn_ref,
                 shortkey: OnceCell::new(),

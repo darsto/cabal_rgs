@@ -15,7 +15,6 @@ use std::fmt::Display;
 /// Note this doesn't implement [`futures::stream::Stream`].
 #[derive(Debug)]
 pub struct PacketStream<T: Unpin> {
-    pub id: i32,
     pub service: pkt_common::Connect,
     pub stream: T,
     /// Received Header
@@ -24,9 +23,8 @@ pub struct PacketStream<T: Unpin> {
 }
 
 impl<T: Unpin> PacketStream<T> {
-    pub fn new(id: i32, stream: T) -> Self {
+    pub fn new(stream: T) -> Self {
         Self {
-            id,
             service: Default::default(),
             stream,
             recv_hdr: None,
@@ -36,25 +34,28 @@ impl<T: Unpin> PacketStream<T> {
 }
 
 impl<T: Unpin + AsyncRead> PacketStream<T> {
-    pub fn new_buffered(id: i32, stream: T) -> PacketStream<BufReader<T>> {
-        PacketStream::<_>::new(id, BufReader::with_capacity(65536, stream))
+    pub fn new_buffered(stream: T) -> PacketStream<BufReader<T>> {
+        PacketStream::<_>::new(BufReader::with_capacity(65536, stream))
     }
 }
 
 impl<T: Unpin + AsyncBufRead> PacketStream<T> {
-    pub async fn from_host(id: i32, stream: T) -> Result<Self, anyhow::Error> {
-        let mut stream = Self::new(id, stream);
+    pub async fn from_host(stream: T) -> Result<Self, anyhow::Error> {
+        let mut stream = Self::new(stream);
         let p = stream.recv().await.map_err(|e| {
             anyhow!(
-                "Conn #{}: Failed to receive the first packet: {e:?}",
-                stream.id
+                "Conn #{:?}: Failed to receive the first packet: {e:?}",
+                stream.service.id
             )
         })?;
         let Payload::Connect(service) = p else {
-            bail!("Conn #{}: Expected Connect packet, got {p:?}", stream.id);
+            bail!(
+                "Conn #{:?}: Expected Connect packet, got {p:?}",
+                stream.service.id
+            );
         };
         if service.id == pkt_common::ServiceID::None {
-            bail!("Conn #{}: Invalid ServiceID", stream.id);
+            bail!("Conn #{:?}: Invalid ServiceID", stream.service.id);
         }
         stream.service = service;
         Ok(stream)
@@ -107,21 +108,15 @@ impl<T: Unpin + AsyncBufRead> PacketStream<T> {
 }
 
 impl<T: Unpin + AsyncWrite> PacketStream<T> {
-    pub async fn from_conn(
-        id: i32,
-        stream: T,
-        service: pkt_common::Connect,
-    ) -> Result<Self, anyhow::Error> {
-        let mut stream = Self::new(id, stream);
+    pub async fn from_conn(stream: T, service: pkt_common::Connect) -> Result<Self, anyhow::Error> {
+        let mut stream = Self::new(stream);
 
         stream
             .send(&Payload::Connect(service.clone()))
             .await
             .unwrap();
 
-        if service.id == pkt_common::ServiceID::None {
-            bail!("Conn #{}: Invalid ServiceID", stream.id);
-        }
+        assert!(service.id != pkt_common::ServiceID::None);
         stream.service = service;
         Ok(stream)
     }
