@@ -4,6 +4,7 @@
 use crate::executor;
 use crate::packet_stream::PacketStream;
 use crate::registry::{BorrowRef, BorrowRegistry};
+use crate::EndpointID;
 use clap::Parser;
 use futures::io::BufReader;
 use log::{error, info};
@@ -86,28 +87,27 @@ impl Listener {
         let listener = self.me.upgrade().unwrap();
         // Give the connection handler its own background task
         executor::spawn_local(async move {
-            let service = pkt_common::Connect {
+            let self_id = EndpointID {
                 service: ServiceID::GlobalMgrSvr,
                 world_id: 0x80,
                 channel_id: 0,
                 unk2: 0,
             };
+            let other_id = EndpointID {
+                service: ServiceID::GlobalMgrSvr,
+                ..self_id
+            };
             let stream = PacketStream::from_conn(
+                self_id.clone(),
+                other_id.clone(),
                 BufReader::with_capacity(65536, db_stream),
-                service.clone(),
             )
             .await
             .unwrap();
 
             let conn_ref = listener
                 .connections
-                .add_borrower(
-                    TypeId::of::<GlobalDbHandler>(),
-                    pkt_common::Connect {
-                        service: ServiceID::DBAgent,
-                        ..service
-                    },
-                )
+                .add_borrower(TypeId::of::<GlobalDbHandler>(), other_id)
                 .unwrap();
 
             let conn = Connection {
@@ -129,10 +129,18 @@ impl Listener {
             executor::spawn_local(async move {
                 info!("Listener: new connection ...");
 
-                let stream = PacketStream::from_host(BufReader::with_capacity(65536, stream))
-                    .await
-                    .unwrap();
-                let id = stream.id.clone();
+                let stream = PacketStream::from_host(
+                    EndpointID {
+                        service: ServiceID::GlobalMgrSvr,
+                        world_id: 0x80,
+                        channel_id: 0,
+                        unk2: 0,
+                    },
+                    BufReader::with_capacity(65536, stream),
+                )
+                .await
+                .unwrap();
+                let id = stream.other_id.clone();
 
                 info!("Listener: {id} connected");
                 if let Err(err) = listener.handle_new_conn(stream).await {
@@ -149,7 +157,7 @@ impl Listener {
         self: Arc<Listener>,
         stream: PacketStream<BufReader<Async<TcpStream>>>,
     ) -> Result<()> {
-        let id = &stream.id;
+        let id = &stream.other_id;
         if let Some(conn) = self.connections.refs.iter().find(|conn| {
             let s = &conn.data;
             s.service == id.service && s.world_id == id.world_id && s.channel_id == id.channel_id

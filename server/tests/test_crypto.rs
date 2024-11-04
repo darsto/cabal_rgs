@@ -7,7 +7,7 @@ use log::{info, trace};
 use packet::pkt_common::ServiceID;
 use packet::{Block, Payload};
 use server::packet_stream::PacketStream;
-use server::{executor, ConnectionID};
+use server::{executor, EndpointID};
 
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -53,13 +53,19 @@ fn xor_block(mut block: Block) -> Block {
 async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
     let mut conn = PacketStream::from_conn(
-        BufReader::with_capacity(65536, stream),
-        ConnectionID {
+        EndpointID {
             service: ServiceID::GlobalMgrSvr,
             world_id: 0xfd,
             channel_id: 0x0,
             unk2: 0x0,
         },
+        EndpointID {
+            service: ServiceID::RockNRoll,
+            world_id: 0x0,
+            channel_id: 0x0,
+            unk2: 0x0,
+        },
+        BufReader::with_capacity(65536, stream),
     )
     .await
     .unwrap();

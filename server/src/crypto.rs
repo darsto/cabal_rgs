@@ -3,6 +3,7 @@
 
 use crate::packet_stream::PacketStream;
 use crate::registry::{BorrowRef, BorrowRegistry};
+use crate::EndpointID;
 use crate::{executor, impl_registry_entry};
 use aria::BlockExt;
 use clap::Parser;
@@ -61,16 +62,24 @@ impl Listener {
             executor::spawn_local(async move {
                 info!("Listener: new connection ...");
 
-                let stream = PacketStream::from_host(BufReader::with_capacity(65536, stream))
-                    .await
-                    .unwrap();
+                let stream = PacketStream::from_host(
+                    EndpointID {
+                        service: ServiceID::RockNRoll,
+                        world_id: 0x0,
+                        channel_id: 0x0,
+                        unk2: 0x0,
+                    },
+                    BufReader::with_capacity(65536, stream),
+                )
+                .await
+                .unwrap();
                 let conn = Connection {
                     stream,
                     listener,
                     conn_ref,
                     shortkey: OnceCell::new(),
                 };
-                let id = conn.stream.id.clone();
+                let id = conn.stream.other_id.clone();
 
                 info!("Listener: {id} connected");
                 if let Err(err) = conn.handle().await {
@@ -252,8 +261,8 @@ impl Connection {
     }
 
     pub async fn handle(mut self) -> Result<()> {
-        assert_eq!(self.stream.id.service, ServiceID::GlobalMgrSvr);
-        assert_eq!(self.stream.id.world_id, 0xfd);
+        assert_eq!(self.stream.other_id.service, ServiceID::GlobalMgrSvr);
+        assert_eq!(self.stream.other_id.world_id, 0xfd);
 
         let ack = packet::pkt_crypto::ConnectAck {
             unk1: 0x0,

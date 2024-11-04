@@ -22,7 +22,7 @@ pub struct GlobalDbHandler {
 crate::impl_registry_entry!(
     GlobalDbHandler,
     pkt_common::Connect,
-    .conn.stream.id,
+    .conn.stream.other_id,
     .conn.conn_ref
 );
 

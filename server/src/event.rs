@@ -3,6 +3,7 @@
 
 use crate::packet_stream::PacketStream;
 use crate::registry::{BorrowRef, BorrowRegistry};
+use crate::EndpointID;
 use crate::{executor, impl_registry_entry};
 use clap::Parser;
 use futures::io::BufReader;
@@ -56,16 +57,24 @@ impl Listener {
             // Give the connection handler its own background task
             let listener = self.me.upgrade().unwrap();
             executor::spawn_local(async move {
-                let stream = PacketStream::from_host(BufReader::with_capacity(65536, stream))
-                    .await
-                    .unwrap();
+                let stream = PacketStream::from_host(
+                    EndpointID {
+                        service: pkt_common::ServiceID::EventMgr,
+                        world_id: 0x0,
+                        channel_id: 0x0,
+                        unk2: 0x0,
+                    },
+                    BufReader::with_capacity(65536, stream),
+                )
+                .await
+                .unwrap();
 
                 let conn = Connection {
                     stream,
                     listener,
                     conn_ref,
                 };
-                let id = conn.stream.id.clone();
+                let id = conn.stream.other_id.clone();
 
                 info!("Listener: {id} connected");
                 if let Err(err) = conn.handle().await {
@@ -100,8 +109,8 @@ impl Connection {
         let ack = packet::pkt_event::ConnectAck {
             unk1: 0x0,
             unk2: [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00],
-            world_id: self.stream.id.world_id,
-            channel_id: self.stream.id.channel_id,
+            world_id: self.stream.other_id.world_id,
+            channel_id: self.stream.other_id.channel_id,
             unk3: 0x0,
             unk4: 0x1,
         };

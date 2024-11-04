@@ -17,7 +17,7 @@ pub struct GlobalChatHandler {
 crate::impl_registry_entry!(
     GlobalChatHandler,
     pkt_common::Connect,
-    .conn.stream.id,
+    .conn.stream.other_id,
     .conn.conn_ref
 );
 

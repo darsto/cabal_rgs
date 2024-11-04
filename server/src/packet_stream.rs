@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use crate::ConnectionID;
+use crate::EndpointID;
 use futures::{io::BufReader, AsyncBufRead, AsyncRead, AsyncWrite};
 use log::{debug, trace};
 use packet::*;
@@ -16,7 +16,8 @@ use std::fmt::Display;
 /// Note this doesn't implement [`futures::stream::Stream`].
 #[derive(Debug)]
 pub struct PacketStream<T: Unpin> {
-    pub id: ConnectionID,
+    pub self_id: EndpointID,
+    pub other_id: EndpointID,
     pub stream: T,
     /// Received Header
     recv_hdr: Option<Header>,
@@ -24,9 +25,10 @@ pub struct PacketStream<T: Unpin> {
 }
 
 impl<T: Unpin> PacketStream<T> {
-    pub fn new(id: ConnectionID, stream: T) -> Self {
+    pub fn new(self_id: EndpointID, other_id: EndpointID, stream: T) -> Self {
         Self {
-            id,
+            self_id,
+            other_id,
             stream,
             recv_hdr: None,
             send_buf: Vec::new(),
@@ -35,30 +37,29 @@ impl<T: Unpin> PacketStream<T> {
 }
 
 impl<T: Unpin + AsyncRead> PacketStream<T> {
-    pub fn new_buffered(id: ConnectionID, stream: T) -> PacketStream<BufReader<T>> {
-        PacketStream::<_>::new(id, BufReader::with_capacity(65536, stream))
+    pub fn new_buffered(
+        self_id: EndpointID,
+        other_id: EndpointID,
+        stream: T,
+    ) -> PacketStream<BufReader<T>> {
+        PacketStream::<_>::new(self_id, other_id, BufReader::with_capacity(65536, stream))
     }
 }
 
 impl<T: Unpin + AsyncBufRead> PacketStream<T> {
-    pub async fn from_host(stream: T) -> Result<Self, anyhow::Error> {
-        let mut stream = Self::new(ConnectionID::default(), stream);
-        let p = stream.recv().await.map_err(|e| {
-            anyhow!(
-                "Conn #{:?}: Failed to receive the first packet: {e:?}",
-                stream.id.service
-            )
-        })?;
+    pub async fn from_host(self_id: EndpointID, stream: T) -> Result<Self, anyhow::Error> {
+        let mut stream = Self::new(self_id, EndpointID::default(), stream);
+        let p = stream
+            .recv()
+            .await
+            .map_err(|e| anyhow!("Failed to receive the first packet: {e:?}"))?;
         let Payload::Connect(connect) = p else {
-            bail!(
-                "Conn #{:?}: Expected Connect packet, got {p:?}",
-                stream.id.service
-            );
+            bail!("Expected Connect packet, got {p:?}");
         };
         if connect.service == pkt_common::ServiceID::None {
-            bail!("Conn #{:?}: Invalid ServiceID", stream.id.service);
+            bail!("Received invalid ServiceID: {connect}");
         }
-        stream.id = connect;
+        stream.other_id = connect;
         Ok(stream)
     }
 
@@ -103,17 +104,25 @@ impl<T: Unpin + AsyncBufRead> PacketStream<T> {
         self.recv_hdr = None;
 
         let p = p?;
-        debug!("{self}: Decoded packet: {p:?}");
+        debug!(
+            "{self_id}<-{other_id}: recv: {p:?}",
+            self_id = self.self_id,
+            other_id = self.other_id
+        );
         Ok(p)
     }
 }
 
 impl<T: Unpin + AsyncWrite> PacketStream<T> {
-    pub async fn from_conn(stream: T, id: ConnectionID) -> Result<Self, anyhow::Error> {
-        assert!(id.service != pkt_common::ServiceID::None);
-        let mut stream = Self::new(id, stream);
+    pub async fn from_conn(
+        self_id: EndpointID,
+        other_id: EndpointID,
+        stream: T,
+    ) -> Result<Self, anyhow::Error> {
+        assert!(other_id.service != pkt_common::ServiceID::None);
+        let mut stream = Self::new(self_id, other_id, stream);
         stream
-            .send(&Payload::Connect(stream.id.clone()))
+            .send(&Payload::Connect(stream.self_id.clone()))
             .await
             .unwrap();
 
@@ -128,7 +137,11 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
         if !self.send_buf.is_empty() {
             bail!("One of the previous send operations was cancelled. Aborting");
         }
-        trace!("{self}: sent pkt: {pkt:?}");
+        trace!(
+            "{self_id}->{other_id}: sent: {pkt:?}",
+            self_id = self.self_id,
+            other_id = self.other_id
+        );
         let len = pkt.encode(&mut self.send_buf)?;
         self.stream.write_all(&self.send_buf[..len]).await?;
         self.send_buf.clear();
@@ -138,6 +151,6 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
 
 impl<T: Unpin> Display for PacketStream<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Conn {:?}", self.id)
+        self.other_id.fmt(f)
     }
 }
