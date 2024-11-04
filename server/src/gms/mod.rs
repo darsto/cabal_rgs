@@ -7,6 +7,7 @@ use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::EndpointID;
 use clap::Parser;
 use futures::io::BufReader;
+use futures::AsyncWriteExt;
 use log::{error, info};
 use packet::pkt_common::ServiceID;
 use packet::*;
@@ -231,16 +232,15 @@ impl Connection {
             bail!("{self}: Can't find a conn to route to: {route_hdr:?}");
         };
 
-        let mut bytes = Vec::with_capacity(4096);
+        let mut target_bytes = Vec::with_capacity(4096);
         let p = Payload::RoutePacket(p);
-        let len = p
-            .encode(&mut bytes)
+        let target_len = p
+            .encode(&mut target_bytes)
             .map_err(|e| anyhow!("{self}: Failed to reencode packet {e}: {p:?}"))?;
 
-        let mut target_hdr = Header::decode(&bytes[0..Header::SIZE])?;
+        let mut target_hdr = Header::decode(&target_bytes[..Header::SIZE]).unwrap();
         target_hdr.id = route_hdr.origin_main_cmd;
-        let target_payload = Payload::decode(&target_hdr, &bytes[Header::SIZE..len])
-            .map_err(|e| anyhow!("{self}: Failed to decode target packet {e}: {p:?}"))?;
+        target_hdr.encode(&mut target_bytes[..Header::SIZE]).unwrap();
 
         let mut target_conn = conn_ref
             .borrower
@@ -253,7 +253,8 @@ impl Connection {
             .downcast_mut::<Connection>()
             .unwrap()
             .stream
-            .send(&target_payload)
+            .stream
+            .write_all(&target_bytes[..target_len])
             .await
             .map_err(|e| {
                 anyhow!(
