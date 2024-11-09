@@ -56,22 +56,22 @@ impl GlobalWorldHandler {
 
         #[rustfmt::skip]
         self.conn.stream
-            .send(&Payload::ConnectAck(ConnectAck {
+            .send(&ConnectAck {
                 bytes: BoundVec(vec![
                     0x50, 0, 0, 0, 0, 0, 0, 0,
                     ServiceID::GlobalMgrSvr as u8, 0, 0, 0, 0,
                     service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
                 ]),
-            }))
+            })
             .await.unwrap();
 
         self.conn
             .stream
-            .send(&Payload::ChangeChannelType(ChangeChannelType {
+            .send(&ChangeChannelType {
                 server_id: service.world_id,
                 channel_id: service.channel_id,
                 state: self.state,
-            }))
+            })
             .await
             .unwrap();
 
@@ -80,18 +80,16 @@ impl GlobalWorldHandler {
             cur_timestamp.next_multiple_of(24 * 3600) - 24 * 3600 + 4 * 3600; /* FIXME: 4h offset is a temporary hack */
         self.conn
             .stream
-            .send(&Payload::DailyQuestResetTime(DailyQuestResetTime {
+            .send(&DailyQuestResetTime {
                 next_daily_reset_time,
                 unk2: 0,
-            }))
+            })
             .await
             .unwrap();
 
         self.conn
             .stream
-            .send(&Payload::AdditionalDungeonInstanceCount(
-                AdditionalDungeonInstanceCount { unk1: 0, unk2: 0 },
-            ))
+            .send(&AdditionalDungeonInstanceCount { unk1: 0, unk2: 0 })
             .await
             .unwrap();
 
@@ -102,22 +100,22 @@ impl GlobalWorldHandler {
                         anyhow!("{self}: Failed to recv a packet: {e}")
                     })?;
                     match p {
-                        Payload::ProfilePathRequest(p) => {
+                        Packet::ProfilePathRequest(p) => {
                             self.handle_profile_path(p).await.unwrap();
                         }
-                        Payload::NotifyUserCount(p) => {
+                        Packet::NotifyUserCount(p) => {
                             self.handle_user_count_update(p).await.unwrap();
                         }
-                        Payload::ShutdownStatsSet(p) => {
+                        Packet::ShutdownStatsSet(p) => {
                             self.handle_shutdown_stats_set(p).await.unwrap();
                         }
-                        Payload::ChannelOptionSync(p) => {
+                        Packet::ChannelOptionSync(p) => {
                             self.handle_channel_option_sync(p).await.unwrap();
                         }
-                        Payload::RoutePacket(p) => {
+                        Packet::RoutePacket(p) => {
                             self.conn.handle_route_packet(p).await.unwrap();
                         }
-                        Payload::SubPasswordCheckRequest(p) => {
+                        Packet::SubPasswordCheckRequest(p) => {
                             self.handle_sub_password_check(p).await.unwrap();
                         }
                         _ => {
@@ -137,7 +135,7 @@ impl GlobalWorldHandler {
         assert_eq!(p.unk1, 0);
         self.conn
             .stream
-            .send(&Payload::ProfilePathResponse(ProfilePathResponse {
+            .send(&ProfilePathResponse {
                 unk1: 5 + COUNTER.fetch_add(1, Ordering::Relaxed) as u32, // TODO: test with more than 2 channels
                 scp_id1: 4,
                 scp_path1: Arr::from("Data/Item.scp".as_bytes()),
@@ -145,7 +143,7 @@ impl GlobalWorldHandler {
                 scp_path2: Arr::from("Data/Mobs.scp".as_bytes()),
                 scp_id3: 1,
                 scp_path3: Arr::from("Data/Warp.scp".as_bytes()),
-            }))
+            })
             .await
     }
 
@@ -218,17 +216,15 @@ impl GlobalWorldHandler {
         // Never ask for PIN
         self.conn
             .stream
-            .send(&Payload::SubPasswordCheckResponse(
-                SubPasswordCheckResponse {
-                    unk1: p.unk1,
-                    auth_needed: 0,
-                    zeroes: Default::default(),
-                    unk2: p.unk2,
-                    unk3: 0x4152,
-                    login_counter: p.login_counter,
-                    unk4: p.unk4,
-                },
-            ))
+            .send(&SubPasswordCheckResponse {
+                unk1: p.unk1,
+                auth_needed: 0,
+                zeroes: Default::default(),
+                unk2: p.unk2,
+                unk3: 0x4152,
+                login_counter: p.login_counter,
+                unk4: p.unk4,
+            })
             .await?;
 
         Ok(())

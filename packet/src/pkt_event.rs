@@ -13,7 +13,6 @@ pub struct ConnectAck {
     unk3: u32, // hardcoded to 0x0
     unk4: u8,  // hardcoded to 0x1
 }
-packet_alias!(ConnectAck, pkt_common::ConnectAck);
 assert_def_packet_size!(ConnectAck, 20);
 
 #[packet(0x2b3)]

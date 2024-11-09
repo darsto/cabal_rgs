@@ -53,22 +53,22 @@ impl GlobalLoginHandler {
 
         #[rustfmt::skip]
         self.conn.stream
-            .send(&Payload::ConnectAck(pkt_common::ConnectAck {
+            .send(&pkt_common::ConnectAck {
                 bytes: BoundVec(vec![
                     0xfa, 0, 0, 0, 0, 0, 0, 0,
                     ServiceID::GlobalMgrSvr as u8, 0, 0, 0, 0,
                     service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
                 ]),
-            }))
+            })
             .await.unwrap();
 
         self.conn
             .stream
-            .send(&Payload::ChangeServerState(ChangeServerState {
+            .send(&ChangeServerState {
                 server_id: service.world_id,
                 channel_id: service.channel_id,
                 state: ServerStateEnum::Disabled,
-            }))
+            })
             .await
             .unwrap();
 
@@ -79,22 +79,22 @@ impl GlobalLoginHandler {
                         anyhow!("{self}: Failed to recv a packet: {e}")
                     })?;
                     match p {
-                        Payload::ClientVersionNotify(p) => {
+                        Packet::ClientVersionNotify(p) => {
                             info!("{self}: Version: {}, Magickey: {:#x}", p.version, p.magickey);
                         }
-                        Payload::NotifyUserCount(_) => {
+                        Packet::NotifyUserCount(_) => {
                             self.notify_user_counts = true;
                         }
-                        Payload::SystemMessage(p) => {
+                        Packet::SystemMessage(p) => {
                             self.handle_system_message(p).await.unwrap();
                         }
-                        Payload::RoutePacket(p) => {
+                        Packet::RoutePacket(p) => {
                             self.conn.handle_route_packet(p).await.unwrap();
                         }
-                        Payload::SetLoginInstance(p) => {
+                        Packet::SetLoginInstance(p) => {
                             self.handle_login_stt(p).await.unwrap();
                         }
-                        Payload::MultipleLoginDisconnectRequest(p) => {
+                        Packet::MultipleLoginDisconnectRequest(p) => {
                             self.handle_already_connected_prompt(p).await.unwrap();
                         }
                         _ => {
@@ -130,14 +130,10 @@ impl GlobalLoginHandler {
 
         // Tell each WorldSvr about the other channels
         // (perhaps for the "Switch Channel" functionality?)
-        let world_srv_state = Payload::ServerState(
-            WorldServerState {
-                unk1: 1, // FIXME: server id
-                groups: groups.clone().into(),
-            }
-            .try_into()
-            .unwrap(),
-        );
+        let world_srv_state = WorldServerState {
+            unk1: 1, // FIXME: server id
+            groups: groups.clone().into(),
+        };
 
         let conns = BorrowRegistry::borrow_multiple::<GlobalWorldHandler>(
             self.conn.listener.connections.refs.iter(),
@@ -173,14 +169,10 @@ impl GlobalLoginHandler {
         if let Err(e) = self
             .conn
             .stream
-            .send(&Payload::ServerState(
-                LoginServerState {
-                    servers: servers.into(),
-                    trailing: vec![0; 1024].into(),
-                }
-                .try_into()
-                .unwrap(),
-            ))
+            .send(&LoginServerState {
+                servers: servers.into(),
+                trailing: vec![0; 1024].into(),
+            })
             .await
         {
             error!("{self}: Failed to send LoginServerState: {e}");
@@ -190,7 +182,7 @@ impl GlobalLoginHandler {
     }
 
     pub async fn handle_system_message(&mut self, p: SystemMessage) -> Result<()> {
-        let resp = Payload::SystemMessageForwarded(SystemMessageForwarded { data: p });
+        let resp = SystemMessageForwarded { data: p };
 
         let conns = BorrowRegistry::borrow_multiple::<GlobalWorldHandler>(
             self.conn.listener.connections.refs.iter(),
@@ -210,13 +202,12 @@ impl GlobalLoginHandler {
 
     pub async fn handle_login_stt(&mut self, p: SetLoginInstance) -> Result<()> {
         debug!("{self}: New login! {p:?}");
-        let resp = Payload::SetLoginInstance(p);
 
         let conns = BorrowRegistry::borrow_multiple::<GlobalDbHandler>(
             self.conn.listener.connections.refs.iter(),
         );
         async_for_each!(mut conn in conns => {
-            if let Err(e) = conn.conn.stream.send(&resp).await {
+            if let Err(e) = conn.conn.stream.send(&p).await {
                 error!(
                     "{self}: Failed to send SetLoginInstance to {}: {e}",
                     conn.conn
@@ -231,10 +222,10 @@ impl GlobalLoginHandler {
         &mut self,
         p: MultipleLoginDisconnectRequest,
     ) -> Result<()> {
-        let resp = Payload::MultipleLoginDisconnectResponse(MultipleLoginDisconnectResponse {
+        let resp = MultipleLoginDisconnectResponse {
             unk1: p.unk1,
             unk2: p.unk2,
-        });
+        };
         let conns = BorrowRegistry::borrow_multiple::<GlobalWorldHandler>(
             self.conn.listener.connections.refs.iter(),
         );
@@ -266,7 +257,7 @@ impl GlobalLoginHandler {
             self.conn.listener.connections.refs.iter(),
         );
         async_for_each!(mut conn in conns => {
-            if let Err(e) = conn.conn.stream.send(&Payload::SetLoginInstance(resp.clone())).await {
+            if let Err(e) = conn.conn.stream.send(&resp).await {
                 error!(
                     "{self}: Failed to send MultipleLoginDisconnectResponse to {}: {e}",
                     conn.conn

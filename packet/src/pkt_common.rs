@@ -6,12 +6,18 @@ use packet_proc::{packet, PacketEnum};
 
 use crate::BoundVec;
 
-#[packet(0x0)]
+#[derive(std::fmt::Debug, PartialEq, Clone, Default, bincode::Encode, bincode::Decode)]
 pub struct Unknown {
-    id: u16,
-    data: UnknownPayload,
+    pub id: u16,
+    pub data: UnknownPayload,
 }
 pub type UnknownPayload = BoundVec<0, u8>;
+
+impl crate::Payload for Unknown {
+    fn id(&self) -> u16 {
+        self.id
+    }
+}
 
 #[packet(0x5)]
 pub struct Connect {

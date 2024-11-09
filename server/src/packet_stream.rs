@@ -53,7 +53,7 @@ impl<T: Unpin + AsyncBufRead> PacketStream<T> {
             .recv()
             .await
             .map_err(|e| anyhow!("Failed to receive the first packet: {e:?}"))?;
-        let Payload::Connect(connect) = p else {
+        let Packet::Connect(connect) = p else {
             bail!("Expected Connect packet, got {p:?}");
         };
         if connect.service == pkt_common::ServiceID::None {
@@ -65,7 +65,7 @@ impl<T: Unpin + AsyncBufRead> PacketStream<T> {
 
     /// Try to receive a packet from the stream.
     /// This is cancellation-safe.
-    pub async fn recv(&mut self) -> Result<Payload> {
+    pub async fn recv(&mut self) -> Result<Packet> {
         let hdr = if let Some(hdr) = &self.recv_hdr {
             hdr
         } else {
@@ -78,7 +78,7 @@ impl<T: Unpin + AsyncBufRead> PacketStream<T> {
                     break &buf[..Header::SIZE];
                 }
             };
-            let hdr = Header::decode(buf);
+            let hdr = Header::deserialize(buf);
             self.stream.consume(Header::SIZE);
             self.recv_hdr.insert(hdr?)
         };
@@ -98,7 +98,7 @@ impl<T: Unpin + AsyncBufRead> PacketStream<T> {
             }
         };
 
-        let p = Payload::decode(&hdr, buf)
+        let p = Packet::deserialize_no_hdr(hdr.id, buf)
             .map_err(|e| anyhow!("Can't decode packet {hdr:x?}: {e}\nPayload: {buf:x?}"));
         self.stream.consume(payload_len);
         self.recv_hdr = None;
@@ -121,10 +121,7 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
     ) -> Result<Self, anyhow::Error> {
         assert!(other_id.service != pkt_common::ServiceID::None);
         let mut stream = Self::new(self_id, other_id, stream);
-        stream
-            .send(&Payload::Connect(stream.self_id.clone()))
-            .await
-            .unwrap();
+        stream.send(&stream.self_id.clone()).await.unwrap();
 
         Ok(stream)
     }
@@ -133,7 +130,7 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
     /// This is cancellation-safe, although the packet might
     /// be send incompletely, and further attempts to send more
     /// packets will immediately fail.
-    pub async fn send(&mut self, pkt: &Payload) -> Result<()> {
+    pub async fn send(&mut self, pkt: &impl Payload) -> Result<()> {
         if !self.send_buf.is_empty() {
             bail!("One of the previous send operations was cancelled. Aborting");
         }
@@ -142,7 +139,7 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
             self_id = self.self_id,
             other_id = self.other_id
         );
-        let len = pkt.encode(&mut self.send_buf)?;
+        let len = pkt.serialize(&mut self.send_buf)?;
         self.stream.write_all(&self.send_buf[..len]).await?;
         self.send_buf.clear();
         Ok(())

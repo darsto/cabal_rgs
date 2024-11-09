@@ -150,11 +150,12 @@ impl Connection {
 
         debug!("{self}: sent shortkey={:x?}", &shortkey.as_bytes()[0..8]);
         let shortkey = &shortkey.as_bytes()[0..9];
-        let r = Payload::EncryptKey2Response(pkt_crypto::EncryptKey2Response {
-            key_split_point: req.key_split_point,
-            shortkey: BoundVec(shortkey.iter().map(|b| b ^ 0xb3).collect()),
-        });
-        self.stream.send(&r).await
+        self.stream
+            .send(&pkt_crypto::EncryptKey2Response {
+                key_split_point: req.key_split_point,
+                shortkey: BoundVec(shortkey.iter().map(|b| b ^ 0xb3).collect()),
+            })
+            .await
     }
 
     pub async fn handle_auth_req(&mut self, mut req: pkt_crypto::KeyAuthRequest) -> Result<()> {
@@ -209,19 +210,20 @@ impl Connection {
         enc_warp.iter_mut().for_each(|b| enckey.encrypt_mut(b));
         xor_blocks_mut(&mut enc_warp);
 
-        let r = Payload::KeyAuthResponse(pkt_crypto::KeyAuthResponse {
-            unk1: 0x1,
-            xor_unk2: 0x03010101 ^ 0x1f398ab3,
-            ip_local,
-            xor_unk3: 4 ^ 0xb3,
-            enc_item,
-            xor_unk4: 2 ^ 0xb3,
-            enc_mobs,
-            xor_unk5: 1 ^ 0xb3,
-            enc_warp,
-            port: 38180,
-        });
-        self.stream.send(&r).await
+        self.stream
+            .send(&pkt_crypto::KeyAuthResponse {
+                unk1: 0x1,
+                xor_unk2: 0x03010101 ^ 0x1f398ab3,
+                ip_local,
+                xor_unk3: 4 ^ 0xb3,
+                enc_item,
+                xor_unk4: 2 ^ 0xb3,
+                enc_mobs,
+                xor_unk5: 1 ^ 0xb3,
+                enc_warp,
+                port: 38180,
+            })
+            .await
     }
 
     pub async fn handle_esym(&mut self, esym: pkt_crypto::ESYM) -> Result<()> {
@@ -256,32 +258,30 @@ impl Connection {
 
         let mut bytes = BoundVec(vec![]);
         bincode::encode_into_std_write(r, &mut bytes.0, bincode::config::legacy())?;
-        let r = Payload::ESYM(pkt_crypto::ESYM { bytes });
-        self.stream.send(&r).await
+        self.stream.send(&pkt_crypto::ESYM { bytes }).await
     }
 
     pub async fn handle(mut self) -> Result<()> {
         assert_eq!(self.stream.other_id.service, ServiceID::GlobalMgrSvr);
         assert_eq!(self.stream.other_id.world_id, 0xfd);
 
-        let ack = packet::pkt_crypto::ConnectAck {
-            unk1: 0x0,
-            unk2: [0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00],
-            unk3: 0xf6,
-            unk4: 0xf6,
-            unk5: 0x398ab300,
-            unk6: 0x1f,
-        };
         self.stream
-            .send(&Payload::ConnectAck(ack.try_into()?))
+            .send(&packet::pkt_crypto::ConnectAck {
+                unk1: 0x0,
+                unk2: [0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00],
+                unk3: 0xf6,
+                unk4: 0xf6,
+                unk5: 0x398ab300,
+                unk6: 0x1f,
+            })
             .await?;
 
         loop {
             let p = self.stream.recv().await?;
             match p {
-                Payload::EncryptKey2Request(req) => self.handle_key_req(req).await?,
-                Payload::KeyAuthRequest(req) => self.handle_auth_req(req).await?,
-                Payload::ESYM(req) => self.handle_esym(req).await?,
+                Packet::EncryptKey2Request(req) => self.handle_key_req(req).await?,
+                Packet::KeyAuthRequest(req) => self.handle_auth_req(req).await?,
+                Packet::ESYM(req) => self.handle_esym(req).await?,
                 _ => {
                     trace!("{self}: Got packet: {p:?}");
                 }

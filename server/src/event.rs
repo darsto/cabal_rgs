@@ -106,16 +106,15 @@ impl Display for Connection {
 
 impl Connection {
     pub async fn handle(mut self) -> Result<()> {
-        let ack = packet::pkt_event::ConnectAck {
-            unk1: 0x0,
-            unk2: [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00],
-            world_id: self.stream.other_id.world_id,
-            channel_id: self.stream.other_id.channel_id,
-            unk3: 0x0,
-            unk4: 0x1,
-        };
         self.stream
-            .send(&Payload::ConnectAck(ack.try_into()?))
+            .send(&packet::pkt_event::ConnectAck {
+                unk1: 0x0,
+                unk2: [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00],
+                world_id: self.stream.other_id.world_id,
+                channel_id: self.stream.other_id.channel_id,
+                unk3: 0x0,
+                unk4: 0x1,
+            })
             .await?;
 
         loop {

@@ -232,15 +232,17 @@ impl Connection {
             bail!("{self}: Can't find a conn to route to: {route_hdr:?}");
         };
 
-        let mut target_bytes = Vec::with_capacity(4096);
-        let p = Payload::RoutePacket(p);
+        let mut target_bytes: Vec<u8> = Vec::with_capacity(4096);
+        // reserve the size for header
+        target_bytes.resize(Header::SIZE, 0u8);
+        // serialize payload
         let target_len = p
-            .encode(&mut target_bytes)
+            .serialize_no_hdr(&mut target_bytes)
             .map_err(|e| anyhow!("{self}: Failed to reencode packet {e}: {p:?}"))?;
+        let target_len = target_len.checked_add(Header::SIZE).unwrap();
 
-        let mut target_hdr = Header::decode(&target_bytes[..Header::SIZE]).unwrap();
-        target_hdr.id = route_hdr.origin_main_cmd;
-        target_hdr.encode(&mut target_bytes[..Header::SIZE]).unwrap();
+        let target_hdr = Header::new(route_hdr.origin_main_cmd, target_len.try_into().unwrap());
+        target_hdr.serialize(&mut target_bytes[0..Header::SIZE])?;
 
         let mut target_conn = conn_ref
             .borrower

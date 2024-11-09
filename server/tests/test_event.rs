@@ -4,7 +4,7 @@
 use futures::io::BufReader;
 use log::{info, trace};
 use packet::pkt_common::ServiceID;
-use packet::Payload;
+use packet::{Packet, Payload};
 use server::packet_stream::PacketStream;
 use server::{executor, EndpointID};
 
@@ -57,10 +57,10 @@ async fn start_client_test() {
     trace!("Waiting for Ack ...");
 
     let p = conn.recv().await.unwrap();
-    let Payload::ConnectAck(ack) = &p else {
+    let Packet::ConnectAck(ack) = &p else {
         panic!("Expected ConnectAck packet, got {p:?}");
     };
-    let ack = packet::pkt_event::ConnectAck::try_from(ack).unwrap();
+    let ack = packet::pkt_event::ConnectAck::deserialize_no_hdr(&ack.bytes).unwrap();
     assert_eq!(ack.unk1, 0x0);
     assert_eq!(
         ack.unk2,
@@ -73,12 +73,11 @@ async fn start_client_test() {
     trace!("Ack received!");
     trace!("Sending Keepalive!");
 
-    let keepalive = Payload::Keepalive(packet::pkt_event::Keepalive {});
-    conn.send(&keepalive).await.unwrap();
+    conn.send(&packet::pkt_event::Keepalive {}).await.unwrap();
 
     // make sure the connection wasn't terminated
     Timer::after(Duration::from_millis(100)).await;
-    conn.send(&keepalive).await.unwrap();
+    conn.send(&packet::pkt_event::Keepalive {}).await.unwrap();
 
     info!("All done. Exiting");
 }

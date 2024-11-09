@@ -5,7 +5,7 @@ use aria::{BlockExt, BlockSlice};
 use futures::io::BufReader;
 use log::{info, trace};
 use packet::pkt_common::ServiceID;
-use packet::{Block, Payload};
+use packet::{Block, Packet, Payload};
 use server::packet_stream::PacketStream;
 use server::{executor, EndpointID};
 
@@ -74,10 +74,10 @@ async fn start_client_test() {
     trace!("Waiting for Ack ...");
 
     let p = conn.recv().await.unwrap();
-    let Payload::ConnectAck(ack) = p else {
+    let Packet::ConnectAck(ack) = p else {
         panic!("Expected ConnectAck packet, got {p:?}");
     };
-    let ack = packet::pkt_crypto::ConnectAck::try_from(ack).unwrap();
+    let ack = packet::pkt_crypto::ConnectAck::deserialize_no_hdr(&ack.bytes).unwrap();
 
     assert_eq!(ack.unk1, 0x0);
     assert_eq!(ack.unk2, [0x00, 0xff, 0x00, 0xff, 0x00, 0x00, 0x00, 0x00]);
@@ -89,16 +89,17 @@ async fn start_client_test() {
     trace!("Ack received!");
     trace!("Sending Key Request ...");
 
-    let req = Payload::EncryptKey2Request(packet::pkt_crypto::EncryptKey2Request {
+    conn.send(&packet::pkt_crypto::EncryptKey2Request {
         key_split_point: 0x1 ^ 0x1f398ab3,
-    });
-    conn.send(&req).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     trace!("Key Request sent!");
     trace!("Waiting for response ...");
 
     let p = conn.recv().await.unwrap();
-    let Payload::EncryptKey2Response(mut resp) = p else {
+    let Packet::EncryptKey2Response(mut resp) = p else {
         panic!("Expected EncryptKey2Response packet, got {p:?}");
     };
 
@@ -117,7 +118,7 @@ async fn start_client_test() {
     let enckey = key.expand();
     let deckey = aria::DecryptKey::from(enckey.clone());
 
-    let req = packet::pkt_crypto::KeyAuthRequest {
+    conn.send(&packet::pkt_crypto::KeyAuthRequest {
         unk1: 0x0,
         unk2: 0x0,
         netmask: xor_block(enckey.encrypt(Block::new("255.255.255.127"))),
@@ -128,14 +129,15 @@ async fn start_client_test() {
         ),
         binbuf: xor_blocks(Block::arr_from_slice::<_, 4>("empty").map(|b| enckey.encrypt(b))),
         xor_port: 38180,
-    };
-    conn.send(&Payload::KeyAuthRequest(req)).await.unwrap();
+    })
+    .await
+    .unwrap();
 
     trace!("Key Auth Request sent!");
     trace!("Waiting for response ...");
 
     let p = conn.recv().await.unwrap();
-    let Payload::KeyAuthResponse(mut resp) = p else {
+    let Packet::KeyAuthResponse(mut resp) = p else {
         panic!("Expected KeyAuthResponse packet, got {p:?}");
     };
 
@@ -163,24 +165,23 @@ async fn start_client_test() {
     trace!("Response received");
     trace!("Sending ESYM Request ...");
 
-    let req = packet::pkt_crypto::ESYMRequest {
+    conn.send(&packet::pkt_crypto::ESYMRequest {
         unk1: 0x0,
         nation: "BRA".into(),
         srchash: "f2b76e1ee8a92a8ce99a41c07926d3f3".into(),
-    };
-    conn.send(&Payload::ESYM(req.try_into().unwrap()))
-        .await
-        .unwrap();
+    })
+    .await
+    .unwrap();
 
     trace!("ESYM Request sent!");
     trace!("Waiting for response ...");
 
     let p = conn.recv().await.unwrap();
-    let Payload::ESYM(resp) = p else {
+    let Packet::ESYM(resp) = p else {
         panic!("Expected KeyAuthResponse packet, got {p:?}");
     };
 
-    let resp = packet::pkt_crypto::ESYMResponse::try_from(resp).unwrap();
+    let resp = packet::pkt_crypto::ESYMResponse::deserialize_no_hdr(&resp.bytes).unwrap();
     trace!("ESYM resp length: {}", resp.filesize);
     trace!("Reponse received");
 

@@ -13,7 +13,6 @@ pub struct ConnectAck {
     unk5: u32, // hardcoded to 0x0
     unk6: u8,  // hardcoded to 0x1
 }
-packet_alias!(ConnectAck, pkt_common::ConnectAck);
 assert_def_packet_size!(ConnectAck, 19);
 
 #[packet(0x305)]
@@ -71,7 +70,6 @@ pub struct ESYMRequest {
     nation: NulltermString, // usually BRA
     srchash: NulltermString,
 }
-packet_alias!(ESYMRequest, ESYM);
 
 #[packet(0x30c)]
 pub struct ESYMResponse {
@@ -79,4 +77,3 @@ pub struct ESYMResponse {
     filesize: u32, // 0x0
     esym: BoundVec<0, u8>,
 }
-packet_alias!(ESYMResponse, ESYM);

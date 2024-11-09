@@ -41,7 +41,7 @@ impl GlobalDbHandler {
             .recv()
             .await
             .map_err(|e| anyhow!("{self}: Failed to receive the first packet: {e:?}"))?;
-        let Payload::ConnectAck(ack) = p else {
+        let Packet::ConnectAck(ack) = p else {
             bail!("{self}: Expected ConnectAck packet, got {p:?}");
         };
         assert_eq!(ack.bytes.len(), 20);
@@ -55,7 +55,7 @@ impl GlobalDbHandler {
                         anyhow!("{self}: Failed to recv a packet: {e}")
                     })?;
                     match p {
-                        Payload::AdditionalDungeonInstanceCount(_) => {
+                        Packet::AdditionalDungeonInstanceCount(_) => {
                             // carry on
                         }
                         _ => {
@@ -66,7 +66,7 @@ impl GlobalDbHandler {
                 _ = interval_10s.next().fuse() => {
                     if let Some(dung_inst_cnt) = &self.dung_inst_cnt {
                         self.conn.stream
-                        .send(&Payload::AdditionalDungeonInstanceCount(dung_inst_cnt.clone()))
+                        .send(&dung_inst_cnt.clone())
                         .await.unwrap();
                     }
                 }

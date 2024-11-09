@@ -142,20 +142,18 @@ pub struct ServerState {
     bytes: BoundVec<0, u8>,
 }
 
-#[packet]
+#[packet(0x35)]
 pub struct LoginServerState {
     servers: BoundVec<1, LoginServerNode>,
     // the packet is usually sized way more than needed
     trailing: BoundVec<0, u8>,
 }
-packet_alias!(LoginServerState, ServerState);
 
-#[packet]
+#[packet(0x35)]
 pub struct WorldServerState {
     unk1: u8, // 1 - server id?
     groups: BoundVec<0, GroupNode>,
 }
-packet_alias!(WorldServerState, ServerState);
 
 #[packet]
 pub struct LoginServerNode {
