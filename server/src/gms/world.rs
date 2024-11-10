@@ -118,6 +118,9 @@ impl GlobalWorldHandler {
                         Packet::SubPasswordCheckRequest(p) => {
                             self.handle_sub_password_check(p).await.unwrap();
                         }
+                        Packet::SetLoginInstance(_) => {
+                            // there's nothing to do
+                        }
                         _ => {
                             warn!("{self}: Got unexpected packet: {p:?}");
                         }
