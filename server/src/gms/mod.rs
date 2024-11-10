@@ -95,7 +95,7 @@ impl Listener {
                 unk2: 0,
             };
             let other_id = EndpointID {
-                service: ServiceID::GlobalMgrSvr,
+                service: ServiceID::DBAgent,
                 ..self_id
             };
             let stream = PacketStream::from_conn(
