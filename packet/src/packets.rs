@@ -54,7 +54,11 @@ pub enum Packet {
 }
 
 impl Packet {
-    pub fn serialize(&self, dst: &mut Vec<u8>) -> Result<usize, crate::PayloadSerializeError> {
+    pub fn serialize(
+        &self,
+        dst: &mut Vec<u8>,
+        serialize_checksum: bool,
+    ) -> Result<usize, crate::PayloadSerializeError> {
         // reserve size for header
         dst.resize(Header::SIZE, 0u8);
         // serialize into the rest of vector
@@ -66,13 +70,16 @@ impl Packet {
             .map_err(|_| crate::PayloadSerializeError::PayloadTooLong {
                 payload_len: payload_len as usize,
             })?;
-        let hdr = Header::new(self.id(), len, true);
+        let hdr = Header::new(self.id(), len, serialize_checksum);
         hdr.serialize(&mut dst[0..Header::SIZE]).unwrap();
         Ok(len as usize)
     }
 
-    pub fn deserialize(data: &[u8]) -> Result<Self, crate::PacketDeserializeError> {
-        let hdr = Header::deserialize(data, true)?;
+    pub fn deserialize(
+        data: &[u8],
+        serialize_checksum: bool,
+    ) -> Result<Self, crate::PacketDeserializeError> {
+        let hdr = Header::deserialize(data, serialize_checksum)?;
         let pktbuf = &data[Header::SIZE..(Header::SIZE + hdr.len as usize)];
         Ok(Self::deserialize_no_hdr(hdr.id, pktbuf)?)
     }

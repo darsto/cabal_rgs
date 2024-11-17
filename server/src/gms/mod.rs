@@ -2,7 +2,7 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use crate::executor;
-use crate::packet_stream::PacketStream;
+use crate::packet_stream::{PacketStream, StreamConfig};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::EndpointID;
 use clap::Parser;
@@ -102,6 +102,7 @@ impl Listener {
                 self_id.clone(),
                 other_id.clone(),
                 BufReader::with_capacity(65536, db_stream),
+                StreamConfig::ipc(),
             )
             .await
             .unwrap();
@@ -138,6 +139,7 @@ impl Listener {
                         unk2: 0,
                     },
                     BufReader::with_capacity(65536, stream),
+                    StreamConfig::ipc(),
                 )
                 .await
                 .unwrap();
@@ -241,7 +243,11 @@ impl Connection {
             .map_err(|e| anyhow!("{self}: Failed to reencode packet {e}: {p:?}"))?;
         let target_len = target_len.checked_add(Header::SIZE).unwrap();
 
-        let target_hdr = Header::new(route_hdr.origin_main_cmd, target_len.try_into().unwrap(), true);
+        let target_hdr = Header::new(
+            route_hdr.origin_main_cmd,
+            target_len.try_into().unwrap(),
+            true,
+        );
         target_hdr.serialize(&mut target_bytes[0..Header::SIZE])?;
 
         let mut target_conn = conn_ref

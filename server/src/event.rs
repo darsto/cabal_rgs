@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use crate::packet_stream::PacketStream;
+use crate::packet_stream::{PacketStream, StreamConfig};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::EndpointID;
 use crate::{executor, impl_registry_entry};
@@ -65,6 +65,7 @@ impl Listener {
                         unk2: 0x0,
                     },
                     BufReader::with_capacity(65536, stream),
+                    StreamConfig::ipc(),
                 )
                 .await
                 .unwrap();

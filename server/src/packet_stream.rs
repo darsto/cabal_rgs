@@ -22,16 +22,24 @@ pub struct PacketStream<T: Unpin> {
     /// Received Header
     recv_hdr: Option<Header>,
     send_buf: Vec<u8>,
+    config: StreamConfig,
+}
+
+#[derive(Debug)]
+pub struct StreamConfig {
+    pub serialize_checksum: bool,
+    pub deserialize_checksum: bool,
 }
 
 impl<T: Unpin> PacketStream<T> {
-    pub fn new(self_id: EndpointID, other_id: EndpointID, stream: T) -> Self {
+    pub fn new(self_id: EndpointID, other_id: EndpointID, stream: T, config: StreamConfig) -> Self {
         Self {
             self_id,
             other_id,
             stream,
             recv_hdr: None,
             send_buf: Vec::new(),
+            config,
         }
     }
 }
@@ -41,14 +49,24 @@ impl<T: Unpin + AsyncRead> PacketStream<T> {
         self_id: EndpointID,
         other_id: EndpointID,
         stream: T,
+        config: StreamConfig,
     ) -> PacketStream<BufReader<T>> {
-        PacketStream::<_>::new(self_id, other_id, BufReader::with_capacity(65536, stream))
+        PacketStream::<_>::new(
+            self_id,
+            other_id,
+            BufReader::with_capacity(65536, stream),
+            config,
+        )
     }
 }
 
 impl<T: Unpin + AsyncBufRead> PacketStream<T> {
-    pub async fn from_host(self_id: EndpointID, stream: T) -> Result<Self, anyhow::Error> {
-        let mut stream = Self::new(self_id, EndpointID::default(), stream);
+    pub async fn from_host(
+        self_id: EndpointID,
+        stream: T,
+        config: StreamConfig,
+    ) -> Result<Self, anyhow::Error> {
+        let mut stream = Self::new(self_id, EndpointID::default(), stream, config);
         let p = stream
             .recv()
             .await
@@ -78,7 +96,7 @@ impl<T: Unpin + AsyncBufRead> PacketStream<T> {
                     break &buf[..Header::SIZE];
                 }
             };
-            let hdr = Header::deserialize(buf, true);
+            let hdr = Header::deserialize(buf, self.config.deserialize_checksum);
             self.stream.consume(Header::SIZE);
             self.recv_hdr.insert(hdr?)
         };
@@ -118,9 +136,10 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
         self_id: EndpointID,
         other_id: EndpointID,
         stream: T,
+        config: StreamConfig,
     ) -> Result<Self, anyhow::Error> {
         assert!(other_id.service != pkt_common::ServiceID::None);
-        let mut stream = Self::new(self_id, other_id, stream);
+        let mut stream = Self::new(self_id, other_id, stream, config);
         stream.send(&stream.self_id.clone()).await.unwrap();
 
         Ok(stream)
@@ -139,7 +158,7 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
             self_id = self.self_id,
             other_id = self.other_id
         );
-        let len = pkt.serialize(&mut self.send_buf, true)?;
+        let len = pkt.serialize(&mut self.send_buf, self.config.serialize_checksum)?;
         self.stream.write_all(&self.send_buf[..len]).await?;
         self.send_buf.clear();
         Ok(())
@@ -149,5 +168,14 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
 impl<T: Unpin> Display for PacketStream<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.other_id.fmt(f)
+    }
+}
+
+impl StreamConfig {
+    pub fn ipc() -> Self {
+        Self {
+            serialize_checksum: true,
+            deserialize_checksum: true,
+        }
     }
 }

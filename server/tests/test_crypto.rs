@@ -6,7 +6,7 @@ use futures::io::BufReader;
 use log::{info, trace};
 use packet::pkt_common::ServiceID;
 use packet::{Block, Packet, Payload};
-use server::packet_stream::PacketStream;
+use server::packet_stream::{PacketStream, StreamConfig};
 use server::{executor, EndpointID};
 
 use std::net::{TcpListener, TcpStream};
@@ -66,6 +66,7 @@ async fn start_client_test() {
             unk2: 0x0,
         },
         BufReader::with_capacity(65536, stream),
+        StreamConfig::ipc(),
     )
     .await
     .unwrap();

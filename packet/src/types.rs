@@ -32,7 +32,6 @@ impl Header {
         }
     }
 
-
     pub fn serialize(&self, dst: &mut [u8]) -> Result<usize, EncodeError> {
         let expected_num_bytes = 6 + (self.serialize_checksum as usize) * 4;
         if dst.len() < expected_num_bytes {
@@ -49,10 +48,16 @@ impl Header {
         Ok(expected_num_bytes)
     }
 
-    pub fn deserialize(dst: &[u8], serialize_checksum: bool) -> Result<Self, HeaderDeserializeError> {
+    pub fn deserialize(
+        dst: &[u8],
+        serialize_checksum: bool,
+    ) -> Result<Self, HeaderDeserializeError> {
         let expected_num_bytes = 6 + (serialize_checksum as usize) * 4;
         if dst.len() < expected_num_bytes {
-            return Err(DecodeError::UnexpectedEnd { additional: expected_num_bytes - dst.len() }.into());
+            return Err(DecodeError::UnexpectedEnd {
+                additional: expected_num_bytes - dst.len(),
+            }
+            .into());
         }
 
         let magic = u16::from_le_bytes(dst[0..2].try_into().unwrap());
@@ -156,7 +161,11 @@ pub trait Payload:
 {
     fn id(&self) -> u16;
 
-    fn serialize(&self, dst: &mut Vec<u8>, serialize_checksum: bool) -> Result<usize, PayloadSerializeError> {
+    fn serialize(
+        &self,
+        dst: &mut Vec<u8>,
+        serialize_checksum: bool,
+    ) -> Result<usize, PayloadSerializeError> {
         // reserve size for header
         dst.resize(Header::SIZE, 0u8);
         // serialize into the rest of vector

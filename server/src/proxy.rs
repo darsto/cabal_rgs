@@ -2,7 +2,7 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use crate::executor;
-use crate::packet_stream::PacketStream;
+use crate::packet_stream::{PacketStream, StreamConfig};
 use clap::Parser;
 use futures::{AsyncBufRead, AsyncReadExt, AsyncWrite};
 use log::{error, info, trace};
@@ -77,18 +77,30 @@ impl Listener {
                     Default::default(),
                     Default::default(),
                     upstream.0,
+                    StreamConfig::ipc(),
                 ),
-                downstream: PacketStream::new(Default::default(), Default::default(), downstream.1),
+                downstream: PacketStream::new(
+                    Default::default(),
+                    Default::default(),
+                    downstream.1,
+                    StreamConfig::ipc(),
+                ),
                 args: self.args.clone(),
             };
 
             let conn2 = DwConnection {
                 id: downstream_id,
-                stream: PacketStream::new(Default::default(), Default::default(), upstream.1),
+                stream: PacketStream::new(
+                    Default::default(),
+                    Default::default(),
+                    upstream.1,
+                    StreamConfig::ipc(),
+                ),
                 downstream: PacketStream::new_buffered(
                     Default::default(),
                     Default::default(),
                     downstream.0,
+                    StreamConfig::ipc(),
                 ),
                 args: self.args.clone(),
             };
