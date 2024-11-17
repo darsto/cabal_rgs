@@ -66,13 +66,13 @@ impl Packet {
             .map_err(|_| crate::PayloadSerializeError::PayloadTooLong {
                 payload_len: payload_len as usize,
             })?;
-        let hdr = Header::new(self.id(), len);
+        let hdr = Header::new(self.id(), len, true);
         hdr.serialize(&mut dst[0..Header::SIZE]).unwrap();
         Ok(len as usize)
     }
 
     pub fn deserialize(data: &[u8]) -> Result<Self, crate::PacketDeserializeError> {
-        let hdr = Header::deserialize(data)?;
+        let hdr = Header::deserialize(data, true)?;
         let pktbuf = &data[Header::SIZE..(Header::SIZE + hdr.len as usize)];
         Ok(Self::deserialize_no_hdr(hdr.id, pktbuf)?)
     }

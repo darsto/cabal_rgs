@@ -78,7 +78,7 @@ impl<T: Unpin + AsyncBufRead> PacketStream<T> {
                     break &buf[..Header::SIZE];
                 }
             };
-            let hdr = Header::deserialize(buf);
+            let hdr = Header::deserialize(buf, true);
             self.stream.consume(Header::SIZE);
             self.recv_hdr.insert(hdr?)
         };
@@ -139,7 +139,7 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
             self_id = self.self_id,
             other_id = self.other_id
         );
-        let len = pkt.serialize(&mut self.send_buf)?;
+        let len = pkt.serialize(&mut self.send_buf, true)?;
         self.stream.write_all(&self.send_buf[..len]).await?;
         self.send_buf.clear();
         Ok(())

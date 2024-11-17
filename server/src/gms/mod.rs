@@ -241,7 +241,7 @@ impl Connection {
             .map_err(|e| anyhow!("{self}: Failed to reencode packet {e}: {p:?}"))?;
         let target_len = target_len.checked_add(Header::SIZE).unwrap();
 
-        let target_hdr = Header::new(route_hdr.origin_main_cmd, target_len.try_into().unwrap());
+        let target_hdr = Header::new(route_hdr.origin_main_cmd, target_len.try_into().unwrap(), true);
         target_hdr.serialize(&mut target_bytes[0..Header::SIZE])?;
 
         let mut target_conn = conn_ref
