@@ -4,13 +4,17 @@ version = "0.1.0"
 edition = "2021"
 exclude = ["/.*"]
 
+[[bin]]
+name = "cabalsrv"
+path = "src/main.rs"
+
 [dependencies]
 packet = { path = "../packet" }
 async_proc = { git = "https://github.com/darsto/async_proc" }
 aria = { git = "https://github.com/darsto/aria.git", branch = "master" }
 borrow_mutex = "0.1.1"
 anyhow = "1.0"
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.5", features = ["derive", "cargo", "string"] }
 num_enum = "0.7"
 smol = "2.0"
 syn = { version = "2.0", features = ["derive", "extra-traits"] }

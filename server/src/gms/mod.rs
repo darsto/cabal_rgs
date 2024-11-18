@@ -5,7 +5,7 @@ use crate::executor;
 use crate::packet_stream::{PacketStream, StreamConfig};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::EndpointID;
-use clap::Parser;
+use clap::Args;
 use futures::io::BufReader;
 use futures::AsyncWriteExt;
 use log::{error, info};
@@ -33,7 +33,7 @@ mod db;
 use db::*;
 
 /// GlobalMgrSvr replacement
-#[derive(Parser, Debug, Default)]
+#[derive(Args, Debug, Default)]
 #[command(about, long_about, verbatim_doc_comment)]
 pub struct GmsArgs {}
 

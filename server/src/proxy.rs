@@ -3,7 +3,7 @@
 
 use crate::executor;
 use crate::packet_stream::{PacketStream, StreamConfig};
-use clap::Parser;
+use clap::Args;
 use futures::{AsyncBufRead, AsyncReadExt, AsyncWrite};
 use log::{error, info, trace};
 
@@ -16,9 +16,10 @@ use anyhow::Result;
 use smol::Async;
 
 /// Man in the middle for any cabal service serving cabal packets.
+///
 /// All packets are dumped to stdout. The ones that are known are pretty
 /// printed.
-#[derive(Parser, Debug, Default)]
+#[derive(Args, Debug, Default)]
 #[command(about, long_about, verbatim_doc_comment)]
 pub struct ProxyArgs {
     #[clap(long = "upstream-port", visible_alias = "up")]

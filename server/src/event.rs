@@ -5,7 +5,7 @@ use crate::packet_stream::{PacketStream, StreamConfig};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::EndpointID;
 use crate::{executor, impl_registry_entry};
-use clap::Parser;
+use clap::Args;
 use futures::io::BufReader;
 use log::{error, info, trace};
 use packet::*;
@@ -20,7 +20,7 @@ use std::{net::TcpListener, sync::Arc};
 use anyhow::Result;
 use smol::Async;
 
-#[derive(Parser, Debug)]
+#[derive(Args, Debug)]
 pub struct EventArgs {}
 
 pub struct Listener {

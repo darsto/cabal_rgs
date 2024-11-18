@@ -6,7 +6,7 @@ use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::EndpointID;
 use crate::{executor, impl_registry_entry};
 use aria::BlockExt;
-use clap::Parser;
+use clap::Args;
 use futures::io::BufReader;
 use log::{debug, error, info, trace};
 use packet::pkt_common::ServiceID;
@@ -24,7 +24,7 @@ use std::{net::TcpListener, sync::Arc};
 use anyhow::{bail, Context, Result};
 use smol::Async;
 
-#[derive(Parser, Debug)]
+#[derive(Args, Debug)]
 pub struct CryptoArgs {}
 
 pub struct Listener {
