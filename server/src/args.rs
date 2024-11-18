@@ -24,9 +24,13 @@ struct Args {
 #[derive(Subcommand, Debug)]
 #[clap(rename_all = "kebab_case")]
 pub enum Service {
+    #[cfg(feature = "crypto")]
     Crypto(crate::crypto::CryptoArgs),
+    #[cfg(feature = "event")]
     Event(crate::event::EventArgs),
+    #[cfg(feature = "proxy")]
     Proxy(crate::proxy::ProxyArgs),
+    #[cfg(feature = "gms")]
     Gms(crate::gms::GmsArgs),
 }
 

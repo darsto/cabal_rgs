@@ -8,6 +8,13 @@ exclude = ["/.*"]
 name = "cabalsrv"
 path = "src/main.rs"
 
+[features]
+default = ["event", "crypto", "proxy", "gms"]
+event = []
+crypto = []
+proxy = []
+gms = []
+
 [dependencies]
 packet = { path = "../packet" }
 async_proc = { git = "https://github.com/darsto/async_proc" }

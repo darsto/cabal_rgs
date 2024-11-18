@@ -6,9 +6,13 @@ pub mod atomic_append_vec;
 pub mod packet_stream;
 pub mod registry;
 
+#[cfg(feature = "crypto")]
 pub mod crypto;
+#[cfg(feature = "event")]
 pub mod event;
+#[cfg(feature = "gms")]
 pub mod gms;
+#[cfg(feature = "proxy")]
 pub mod proxy;
 
 use log::LevelFilter;

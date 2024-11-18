@@ -5,7 +5,7 @@
 // Everything else is in lib.rs so it can be unit tested.
 
 use futures::future;
-use server::{args::Service, executor, setup_log};
+use server::{executor, setup_log};
 use smol::Async;
 use std::{net::TcpListener, sync::Arc};
 
@@ -15,6 +15,7 @@ fn main() {
     let args = Arc::new(server::args::parse());
     assert!(!args.services.is_empty());
 
+    #[cfg(feature = "event")]
     if args
         .services
         .iter()
@@ -26,6 +27,7 @@ fn main() {
         executor::spawn_local(async move { event_mgr_listener.listen().await }).detach();
     }
 
+    #[cfg(feature = "crypto")]
     if args
         .services
         .iter()
@@ -37,6 +39,7 @@ fn main() {
         executor::spawn_local(async move { crypto_mgr_listener.listen().await }).detach();
     }
 
+    #[cfg(feature = "gms")]
     if args
         .services
         .iter()
@@ -48,7 +51,8 @@ fn main() {
         executor::spawn_local(async move { gms_listener.listen().await }).detach();
     }
 
-    if let Some(Service::Proxy(proxy)) = args
+    #[cfg(feature = "proxy")]
+    if let Some(server::args::Service::Proxy(proxy)) = args
         .services
         .iter()
         .find(|f| matches!(f, server::args::Service::Proxy { .. }))
