@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use crate::packet_stream::{PacketStream, StreamConfig};
+use crate::packet_stream::IPCPacketStream;
 use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::EndpointID;
 use crate::{executor, impl_registry_entry};
@@ -62,7 +62,7 @@ impl Listener {
             executor::spawn_local(async move {
                 info!("Listener: new connection ...");
 
-                let stream = PacketStream::from_host(
+                let stream = IPCPacketStream::from_host(
                     EndpointID {
                         service: ServiceID::RockNRoll,
                         world_id: 0x0,
@@ -70,7 +70,6 @@ impl Listener {
                         unk2: 0x0,
                     },
                     BufReader::with_capacity(65536, stream),
-                    StreamConfig::ipc(),
                 )
                 .await
                 .unwrap();
@@ -104,7 +103,7 @@ fn xor_blocks_mut(blocks: &mut [Block]) {
 }
 
 pub struct Connection {
-    pub stream: PacketStream<BufReader<Async<TcpStream>>>,
+    pub stream: IPCPacketStream<BufReader<Async<TcpStream>>>,
     pub listener: Arc<Listener>,
     pub conn_ref: Arc<BorrowRef<usize>>,
     pub shortkey: OnceCell<aria::Key>,

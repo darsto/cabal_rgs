@@ -5,7 +5,7 @@ use futures::io::BufReader;
 use log::{info, trace};
 use packet::pkt_common::ServiceID;
 use packet::{Packet, Payload};
-use server::packet_stream::{PacketStream, StreamConfig};
+use server::packet_stream::IPCPacketStream;
 use server::{executor, EndpointID};
 
 use std::net::{TcpListener, TcpStream};
@@ -35,7 +35,7 @@ async fn connect_timeout() -> std::io::Result<Async<TcpStream>> {
 
 async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
-    let mut conn = PacketStream::from_conn(
+    let mut conn = IPCPacketStream::from_conn(
         EndpointID {
             service: ServiceID::WorldSvr,
             world_id: 1,
@@ -49,7 +49,6 @@ async fn start_client_test() {
             unk2: 0,
         },
         BufReader::with_capacity(65536, stream),
-        StreamConfig::ipc(),
     )
     .await
     .unwrap();

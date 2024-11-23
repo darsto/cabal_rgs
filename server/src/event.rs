@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use crate::packet_stream::{PacketStream, StreamConfig};
+use crate::packet_stream::IPCPacketStream;
 use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::EndpointID;
 use crate::{executor, impl_registry_entry};
@@ -57,7 +57,7 @@ impl Listener {
             // Give the connection handler its own background task
             let listener = self.me.upgrade().unwrap();
             executor::spawn_local(async move {
-                let stream = PacketStream::from_host(
+                let stream = IPCPacketStream::from_host(
                     EndpointID {
                         service: pkt_common::ServiceID::EventMgr,
                         world_id: 0x0,
@@ -65,7 +65,6 @@ impl Listener {
                         unk2: 0x0,
                     },
                     BufReader::with_capacity(65536, stream),
-                    StreamConfig::ipc(),
                 )
                 .await
                 .unwrap();
@@ -93,7 +92,7 @@ impl Listener {
 }
 
 pub struct Connection {
-    pub stream: PacketStream<BufReader<Async<TcpStream>>>,
+    pub stream: IPCPacketStream<BufReader<Async<TcpStream>>>,
     pub listener: Arc<Listener>,
     pub conn_ref: Arc<BorrowRef<usize>>,
 }

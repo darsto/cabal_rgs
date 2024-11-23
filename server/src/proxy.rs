@@ -75,33 +75,22 @@ impl Listener {
             let conn = UpConnection {
                 id: upstream_id,
                 stream: PacketStream::new_buffered(
-                    Default::default(),
-                    Default::default(),
                     upstream.0,
-                    StreamConfig::ipc(),
+                    StreamConfig::ipc("?".into(), "?".into()),
                 ),
                 downstream: PacketStream::new(
-                    Default::default(),
-                    Default::default(),
                     downstream.1,
-                    StreamConfig::ipc(),
+                    StreamConfig::ipc("?".into(), "?".into()),
                 ),
                 args: self.args.clone(),
             };
 
             let conn2 = DwConnection {
                 id: downstream_id,
-                stream: PacketStream::new(
-                    Default::default(),
-                    Default::default(),
-                    upstream.1,
-                    StreamConfig::ipc(),
-                ),
+                stream: PacketStream::new(upstream.1, StreamConfig::ipc("?".into(), "?".into())),
                 downstream: PacketStream::new_buffered(
-                    Default::default(),
-                    Default::default(),
                     downstream.0,
-                    StreamConfig::ipc(),
+                    StreamConfig::ipc("?".into(), "?".into()),
                 ),
                 args: self.args.clone(),
             };

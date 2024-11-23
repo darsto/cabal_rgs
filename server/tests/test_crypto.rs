@@ -6,7 +6,7 @@ use futures::io::BufReader;
 use log::{info, trace};
 use packet::pkt_common::ServiceID;
 use packet::{Block, Packet, Payload};
-use server::packet_stream::{PacketStream, StreamConfig};
+use server::packet_stream::{IPCPacketStream, PacketStream, StreamConfig};
 use server::{executor, EndpointID};
 
 use std::net::{TcpListener, TcpStream};
@@ -52,7 +52,7 @@ fn xor_block(mut block: Block) -> Block {
 
 async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
-    let mut conn = PacketStream::from_conn(
+    let mut conn = IPCPacketStream::from_conn(
         EndpointID {
             service: ServiceID::GlobalMgrSvr,
             world_id: 0xfd,
@@ -66,7 +66,6 @@ async fn start_client_test() {
             unk2: 0x0,
         },
         BufReader::with_capacity(65536, stream),
-        StreamConfig::ipc(),
     )
     .await
     .unwrap();

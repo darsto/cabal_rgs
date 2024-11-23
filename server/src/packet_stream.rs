@@ -16,8 +16,6 @@ use std::fmt::Display;
 /// Note this doesn't implement [`futures::stream::Stream`].
 #[derive(Debug)]
 pub struct PacketStream<T: Unpin> {
-    pub self_id: EndpointID,
-    pub other_id: EndpointID,
     pub stream: T,
     /// Received Header
     recv_hdr: Option<Header>,
@@ -27,15 +25,15 @@ pub struct PacketStream<T: Unpin> {
 
 #[derive(Debug)]
 pub struct StreamConfig {
+    pub self_name: String,
+    pub other_name: String,
     pub serialize_checksum: bool,
     pub deserialize_checksum: bool,
 }
 
 impl<T: Unpin> PacketStream<T> {
-    pub fn new(self_id: EndpointID, other_id: EndpointID, stream: T, config: StreamConfig) -> Self {
+    pub fn new(stream: T, config: StreamConfig) -> Self {
         Self {
-            self_id,
-            other_id,
             stream,
             recv_hdr: None,
             send_buf: Vec::new(),
@@ -45,42 +43,12 @@ impl<T: Unpin> PacketStream<T> {
 }
 
 impl<T: Unpin + AsyncRead> PacketStream<T> {
-    pub fn new_buffered(
-        self_id: EndpointID,
-        other_id: EndpointID,
-        stream: T,
-        config: StreamConfig,
-    ) -> PacketStream<BufReader<T>> {
-        PacketStream::<_>::new(
-            self_id,
-            other_id,
-            BufReader::with_capacity(65536, stream),
-            config,
-        )
+    pub fn new_buffered(stream: T, config: StreamConfig) -> PacketStream<BufReader<T>> {
+        PacketStream::<_>::new(BufReader::with_capacity(65536, stream), config)
     }
 }
 
 impl<T: Unpin + AsyncBufRead> PacketStream<T> {
-    pub async fn from_host(
-        self_id: EndpointID,
-        stream: T,
-        config: StreamConfig,
-    ) -> Result<Self, anyhow::Error> {
-        let mut stream = Self::new(self_id, EndpointID::default(), stream, config);
-        let p = stream
-            .recv()
-            .await
-            .map_err(|e| anyhow!("Failed to receive the first packet: {e:?}"))?;
-        let Packet::Connect(connect) = p else {
-            bail!("Expected Connect packet, got {p:?}");
-        };
-        if connect.service == pkt_common::ServiceID::None {
-            bail!("Received invalid ServiceID: {connect}");
-        }
-        stream.other_id = connect;
-        Ok(stream)
-    }
-
     /// Try to receive a packet from the stream.
     /// This is cancellation-safe.
     pub async fn recv(&mut self) -> Result<Packet> {
@@ -123,28 +91,15 @@ impl<T: Unpin + AsyncBufRead> PacketStream<T> {
 
         let p = p?;
         debug!(
-            "{self_id}<-{other_id}: recv: {p:?}",
-            self_id = self.self_id,
-            other_id = self.other_id
+            "{self_name}<-{other_name}: recv: {p:?}",
+            self_name = self.config.self_name,
+            other_name = self.config.other_name
         );
         Ok(p)
     }
 }
 
 impl<T: Unpin + AsyncWrite> PacketStream<T> {
-    pub async fn from_conn(
-        self_id: EndpointID,
-        other_id: EndpointID,
-        stream: T,
-        config: StreamConfig,
-    ) -> Result<Self, anyhow::Error> {
-        assert!(other_id.service != pkt_common::ServiceID::None);
-        let mut stream = Self::new(self_id, other_id, stream, config);
-        stream.send(&stream.self_id.clone()).await.unwrap();
-
-        Ok(stream)
-    }
-
     /// Send a packet.
     /// This is cancellation-safe, although the packet might
     /// be send incompletely, and further attempts to send more
@@ -154,9 +109,9 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
             bail!("One of the previous send operations was cancelled. Aborting");
         }
         trace!(
-            "{self_id}->{other_id}: sent: {pkt:?}",
-            self_id = self.self_id,
-            other_id = self.other_id
+            "{self_name}->{other_name}: sent: {pkt:?}",
+            self_name = self.config.self_name,
+            other_name = self.config.other_name
         );
         let len = pkt.serialize(&mut self.send_buf, self.config.serialize_checksum)?;
         self.stream.write_all(&self.send_buf[..len]).await?;
@@ -167,15 +122,82 @@ impl<T: Unpin + AsyncWrite> PacketStream<T> {
 
 impl<T: Unpin> Display for PacketStream<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.other_id.fmt(f)
+        self.config.other_name.fmt(f)
     }
 }
 
 impl StreamConfig {
-    pub fn ipc() -> Self {
+    pub fn ipc(self_name: String, other_name: String) -> Self {
         Self {
+            self_name,
+            other_name,
             serialize_checksum: true,
             deserialize_checksum: true,
         }
+    }
+}
+
+pub struct IPCPacketStream<T: Unpin> {
+    pub inner: PacketStream<T>,
+    pub self_id: EndpointID,
+    pub other_id: EndpointID,
+}
+
+impl<T: Unpin + AsyncBufRead> IPCPacketStream<T> {
+    pub async fn from_host(self_id: EndpointID, stream: T) -> Result<Self, anyhow::Error> {
+        let config = StreamConfig::ipc(self_id.to_string(), "New".to_string());
+        let mut stream = PacketStream::new(stream, config);
+        let p = stream
+            .recv()
+            .await
+            .map_err(|e| anyhow!("Failed to receive the first packet: {e:?}"))?;
+        let Packet::Connect(other_id) = p else {
+            bail!("Expected Connect packet, got {p:?}");
+        };
+        if other_id.service == pkt_common::ServiceID::None {
+            bail!("Received invalid ServiceID: {other_id}");
+        }
+        Ok(Self {
+            inner: stream,
+            self_id,
+            other_id,
+        })
+    }
+}
+
+impl<T: Unpin + AsyncWrite> IPCPacketStream<T> {
+    pub async fn from_conn(
+        self_id: EndpointID,
+        other_id: EndpointID,
+        stream: T,
+    ) -> Result<Self, anyhow::Error> {
+        assert!(other_id.service != pkt_common::ServiceID::None);
+        let config = StreamConfig::ipc(self_id.to_string(), other_id.to_string());
+        let mut stream = PacketStream::new(stream, config);
+        stream.send(&self_id).await.unwrap();
+
+        Ok(Self {
+            inner: stream,
+            self_id,
+            other_id,
+        })
+    }
+}
+
+impl<T: Unpin + AsyncBufRead> IPCPacketStream<T> {
+    pub async fn recv(&mut self) -> Result<Packet> {
+        self.inner.recv().await
+    }
+}
+
+impl<T: Unpin + AsyncWrite> IPCPacketStream<T> {
+    pub async fn send(&mut self, pkt: &impl Payload) -> Result<()> {
+        self.inner.send(pkt).await
+    }
+}
+
+impl<T: Unpin> Display for IPCPacketStream<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.inner.fmt(f)
     }
 }

@@ -2,7 +2,7 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use crate::executor;
-use crate::packet_stream::{PacketStream, StreamConfig};
+use crate::packet_stream::IPCPacketStream;
 use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::EndpointID;
 use clap::Args;
@@ -98,11 +98,10 @@ impl Listener {
                 service: ServiceID::DBAgent,
                 ..self_id
             };
-            let stream = PacketStream::from_conn(
+            let stream = IPCPacketStream::from_conn(
                 self_id.clone(),
                 other_id.clone(),
                 BufReader::with_capacity(65536, db_stream),
-                StreamConfig::ipc(),
             )
             .await
             .unwrap();
@@ -131,7 +130,7 @@ impl Listener {
             executor::spawn_local(async move {
                 info!("Listener: new connection ...");
 
-                let stream = PacketStream::from_host(
+                let stream = IPCPacketStream::from_host(
                     EndpointID {
                         service: ServiceID::GlobalMgrSvr,
                         world_id: 0x80,
@@ -139,7 +138,6 @@ impl Listener {
                         unk2: 0,
                     },
                     BufReader::with_capacity(65536, stream),
-                    StreamConfig::ipc(),
                 )
                 .await
                 .unwrap();
@@ -158,7 +156,7 @@ impl Listener {
 
     async fn handle_new_conn(
         self: Arc<Listener>,
-        stream: PacketStream<BufReader<Async<TcpStream>>>,
+        stream: IPCPacketStream<BufReader<Async<TcpStream>>>,
     ) -> Result<()> {
         let id = &stream.other_id;
         if let Some(conn) = self.connections.refs.iter().find(|conn| {
@@ -206,7 +204,7 @@ impl Listener {
 struct Connection {
     conn_ref: Arc<BorrowRef<pkt_common::Connect>>,
     listener: Arc<Listener>,
-    stream: PacketStream<BufReader<Async<TcpStream>>>,
+    stream: IPCPacketStream<BufReader<Async<TcpStream>>>,
 }
 
 impl Display for Connection {
@@ -261,6 +259,7 @@ impl Connection {
             .downcast_mut::<Connection>()
             .unwrap()
             .stream
+            .inner
             .stream
             .write_all(&target_bytes[..target_len])
             .await
