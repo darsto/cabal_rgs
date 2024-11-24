@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use crate::EndpointID;
 use futures::{io::BufReader, AsyncBufRead, AsyncRead, AsyncWrite};
 use log::{debug, trace};
 use packet::*;
 
 use anyhow::{anyhow, bail, Result};
+use pkt_common::{Connect, ServiceID};
 use smol::io::{AsyncBufReadExt, AsyncWriteExt};
 use std::fmt::Display;
 
@@ -139,12 +139,24 @@ impl StreamConfig {
 
 pub struct IPCPacketStream<T: Unpin> {
     pub inner: PacketStream<T>,
-    pub self_id: EndpointID,
-    pub other_id: EndpointID,
+    pub self_id: Service,
+    pub other_id: Service,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Service {
+    WorldSvr { server: u8, channel: u8 },
+    LoginSvr,
+    DBAgent,
+    AgentShop,
+    EventMgr,
+    GlobalMgrSvr { id: u8 },
+    ChatNode,
+    RockNRoll,
 }
 
 impl<T: Unpin + AsyncBufRead> IPCPacketStream<T> {
-    pub async fn from_host(self_id: EndpointID, stream: T) -> Result<Self, anyhow::Error> {
+    pub async fn from_host(self_id: Service, stream: T) -> Result<Self, anyhow::Error> {
         let config = StreamConfig::ipc(self_id.to_string(), "New".to_string());
         let mut stream = PacketStream::new(stream, config);
         let p = stream
@@ -154,27 +166,23 @@ impl<T: Unpin + AsyncBufRead> IPCPacketStream<T> {
         let Packet::Connect(other_id) = p else {
             bail!("Expected Connect packet, got {p:?}");
         };
-        if other_id.service == pkt_common::ServiceID::None {
-            bail!("Received invalid ServiceID: {other_id}");
-        }
         Ok(Self {
             inner: stream,
             self_id,
-            other_id,
+            other_id: other_id.into(),
         })
     }
 }
 
 impl<T: Unpin + AsyncWrite> IPCPacketStream<T> {
     pub async fn from_conn(
-        self_id: EndpointID,
-        other_id: EndpointID,
+        self_id: Service,
+        other_id: Service,
         stream: T,
     ) -> Result<Self, anyhow::Error> {
-        assert!(other_id.service != pkt_common::ServiceID::None);
         let config = StreamConfig::ipc(self_id.to_string(), other_id.to_string());
         let mut stream = PacketStream::new(stream, config);
-        stream.send(&self_id).await.unwrap();
+        stream.send(&Connect::from(self_id)).await.unwrap();
 
         Ok(Self {
             inner: stream,
@@ -199,5 +207,74 @@ impl<T: Unpin + AsyncWrite> IPCPacketStream<T> {
 impl<T: Unpin> Display for IPCPacketStream<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.inner.fmt(f)
+    }
+}
+
+impl Service {
+    pub fn service_id(&self) -> ServiceID {
+        use ServiceID as S;
+        match self {
+            Self::WorldSvr { .. } => S::WorldSvr,
+            Self::LoginSvr => S::LoginSvr,
+            Self::DBAgent => S::DBAgent,
+            Self::AgentShop => S::AgentShop,
+            Self::EventMgr => S::EventMgr,
+            Self::GlobalMgrSvr { .. } => S::GlobalMgrSvr,
+            Self::ChatNode => S::ChatNode,
+            Self::RockNRoll => S::RockNRoll,
+        }
+    }
+}
+
+impl From<Connect> for Service {
+    fn from(c: Connect) -> Self {
+        use ServiceID as S;
+        match c.service {
+            S::WorldSvr => Self::WorldSvr {
+                server: c.world_id,
+                channel: c.channel_id,
+            },
+            S::LoginSvr => Self::LoginSvr,
+            S::DBAgent => Self::DBAgent,
+            S::AgentShop => Self::AgentShop,
+            S::EventMgr => Self::EventMgr,
+            S::GlobalMgrSvr => Self::GlobalMgrSvr { id: c.world_id },
+            S::ChatNode => Self::ChatNode,
+            S::RockNRoll => Self::RockNRoll,
+        }
+    }
+}
+
+impl From<Service> for Connect {
+    fn from(e: Service) -> Self {
+        let service = e.service_id();
+        use Service as E;
+        match e {
+            E::WorldSvr { server, channel } => Connect {
+                service,
+                world_id: server,
+                channel_id: channel,
+                unk2: 0,
+            },
+            E::GlobalMgrSvr { id } => Connect {
+                service,
+                world_id: id,
+                channel_id: 0,
+                unk2: 0,
+            },
+            _ => Connect {
+                service,
+                world_id: 0,
+                channel_id: 0,
+                unk2: 0,
+            },
+        }
+    }
+}
+
+impl std::fmt::Display for Service {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let service_id = self.service_id();
+        <ServiceID as std::fmt::Debug>::fmt(&service_id, f)
     }
 }

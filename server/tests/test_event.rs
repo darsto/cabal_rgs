@@ -3,10 +3,10 @@
 
 use futures::io::BufReader;
 use log::{info, trace};
-use packet::pkt_common::ServiceID;
+use packet::pkt_common::Connect;
 use packet::{Packet, Payload};
-use server::packet_stream::IPCPacketStream;
-use server::{executor, EndpointID};
+use server::executor;
+use server::packet_stream::{Service, IPCPacketStream};
 
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -36,18 +36,11 @@ async fn connect_timeout() -> std::io::Result<Async<TcpStream>> {
 async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
     let mut conn = IPCPacketStream::from_conn(
-        EndpointID {
-            service: ServiceID::WorldSvr,
-            world_id: 1,
-            channel_id: 1,
-            unk2: 0,
+        Service::WorldSvr {
+            server: 1,
+            channel: 1,
         },
-        EndpointID {
-            service: ServiceID::EventMgr,
-            world_id: 1,
-            channel_id: 1,
-            unk2: 0,
-        },
+        Service::EventMgr,
         BufReader::with_capacity(65536, stream),
     )
     .await
@@ -66,8 +59,9 @@ async fn start_client_test() {
         ack.unk2,
         [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00]
     );
-    assert_eq!(ack.world_id, conn.other_id.world_id);
-    assert_eq!(ack.channel_id, conn.other_id.channel_id);
+    let self_id = Connect::from(conn.self_id);
+    assert_eq!(ack.world_id, self_id.world_id);
+    assert_eq!(ack.channel_id, self_id.channel_id);
     assert_eq!(ack.unk3, 0x0);
     assert_eq!(ack.unk4, 0x1);
     trace!("Ack received!");

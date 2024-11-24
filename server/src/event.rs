@@ -1,14 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use crate::packet_stream::IPCPacketStream;
+use crate::packet_stream::{Service, IPCPacketStream};
 use crate::registry::{BorrowRef, BorrowRegistry};
-use crate::EndpointID;
 use crate::{executor, impl_registry_entry};
 use clap::Args;
 use futures::io::BufReader;
 use log::{error, info, trace};
-use packet::*;
 
 use std::any::TypeId;
 use std::fmt::Display;
@@ -58,12 +56,7 @@ impl Listener {
             let listener = self.me.upgrade().unwrap();
             executor::spawn_local(async move {
                 let stream = IPCPacketStream::from_host(
-                    EndpointID {
-                        service: pkt_common::ServiceID::EventMgr,
-                        world_id: 0x0,
-                        channel_id: 0x0,
-                        unk2: 0x0,
-                    },
+                    Service::EventMgr,
                     BufReader::with_capacity(65536, stream),
                 )
                 .await
@@ -106,12 +99,13 @@ impl Display for Connection {
 
 impl Connection {
     pub async fn handle(mut self) -> Result<()> {
+        let other_conn = packet::pkt_common::Connect::from(self.stream.other_id);
         self.stream
             .send(&packet::pkt_event::ConnectAck {
                 unk1: 0x0,
                 unk2: [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00],
-                world_id: self.stream.other_id.world_id,
-                channel_id: self.stream.other_id.channel_id,
+                world_id: other_conn.world_id,
+                channel_id: other_conn.channel_id,
                 unk3: 0x0,
                 unk4: 0x1,
             })

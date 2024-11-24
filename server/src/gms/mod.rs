@@ -2,15 +2,15 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use crate::executor;
-use crate::packet_stream::IPCPacketStream;
+use crate::packet_stream::{Service, IPCPacketStream};
 use crate::registry::{BorrowRef, BorrowRegistry};
-use crate::EndpointID;
 use clap::Args;
 use futures::io::BufReader;
 use futures::AsyncWriteExt;
 use log::{error, info};
 use packet::pkt_common::ServiceID;
 use packet::*;
+use pkt_common::Connect;
 
 use core::any::TypeId;
 use std::fmt::Display;
@@ -88,19 +88,9 @@ impl Listener {
         let listener = self.me.upgrade().unwrap();
         // Give the connection handler its own background task
         executor::spawn_local(async move {
-            let self_id = EndpointID {
-                service: ServiceID::GlobalMgrSvr,
-                world_id: 0x80,
-                channel_id: 0,
-                unk2: 0,
-            };
-            let other_id = EndpointID {
-                service: ServiceID::DBAgent,
-                ..self_id
-            };
             let stream = IPCPacketStream::from_conn(
-                self_id.clone(),
-                other_id.clone(),
+                Service::GlobalMgrSvr { id: 0x80 },
+                Service::DBAgent,
                 BufReader::with_capacity(65536, db_stream),
             )
             .await
@@ -108,7 +98,7 @@ impl Listener {
 
             let conn_ref = listener
                 .connections
-                .add_borrower(TypeId::of::<GlobalDbHandler>(), other_id)
+                .add_borrower(TypeId::of::<GlobalDbHandler>(), stream.other_id.into())
                 .unwrap();
 
             let conn = Connection {
@@ -131,12 +121,7 @@ impl Listener {
                 info!("Listener: new connection ...");
 
                 let stream = IPCPacketStream::from_host(
-                    EndpointID {
-                        service: ServiceID::GlobalMgrSvr,
-                        world_id: 0x80,
-                        channel_id: 0,
-                        unk2: 0,
-                    },
+                    Service::GlobalMgrSvr { id: 0x80 },
                     BufReader::with_capacity(65536, stream),
                 )
                 .await
@@ -158,7 +143,7 @@ impl Listener {
         self: Arc<Listener>,
         stream: IPCPacketStream<BufReader<Async<TcpStream>>>,
     ) -> Result<()> {
-        let id = &stream.other_id;
+        let id = Connect::from(stream.other_id);
         if let Some(conn) = self.connections.refs.iter().find(|conn| {
             let s = &conn.data;
             s.service == id.service && s.world_id == id.world_id && s.channel_id == id.channel_id

@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use crate::packet_stream::IPCPacketStream;
+use crate::packet_stream::{Service, IPCPacketStream};
 use crate::registry::{BorrowRef, BorrowRegistry};
-use crate::EndpointID;
 use crate::{executor, impl_registry_entry};
 use aria::BlockExt;
 use clap::Args;
 use futures::io::BufReader;
 use log::{debug, error, info, trace};
-use packet::pkt_common::ServiceID;
 use packet::*;
 
 use rand::Rng;
@@ -63,12 +61,7 @@ impl Listener {
                 info!("Listener: new connection ...");
 
                 let stream = IPCPacketStream::from_host(
-                    EndpointID {
-                        service: ServiceID::RockNRoll,
-                        world_id: 0x0,
-                        channel_id: 0x0,
-                        unk2: 0x0,
-                    },
+                    Service::RockNRoll,
                     BufReader::with_capacity(65536, stream),
                 )
                 .await
@@ -262,8 +255,7 @@ impl Connection {
     }
 
     pub async fn handle(mut self) -> Result<()> {
-        assert_eq!(self.stream.other_id.service, ServiceID::GlobalMgrSvr);
-        assert_eq!(self.stream.other_id.world_id, 0xfd);
+        assert_eq!(self.stream.other_id, Service::GlobalMgrSvr { id: 0xfd });
 
         self.stream
             .send(&packet::pkt_crypto::ConnectAck {

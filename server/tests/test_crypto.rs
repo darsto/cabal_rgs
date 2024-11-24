@@ -4,10 +4,9 @@
 use aria::{BlockExt, BlockSlice};
 use futures::io::BufReader;
 use log::{info, trace};
-use packet::pkt_common::ServiceID;
 use packet::{Block, Packet, Payload};
-use server::packet_stream::{IPCPacketStream, PacketStream, StreamConfig};
-use server::{executor, EndpointID};
+use server::executor;
+use server::packet_stream::{Service, IPCPacketStream};
 
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
@@ -53,18 +52,8 @@ fn xor_block(mut block: Block) -> Block {
 async fn start_client_test() {
     let stream = connect_timeout().await.unwrap();
     let mut conn = IPCPacketStream::from_conn(
-        EndpointID {
-            service: ServiceID::GlobalMgrSvr,
-            world_id: 0xfd,
-            channel_id: 0x0,
-            unk2: 0x0,
-        },
-        EndpointID {
-            service: ServiceID::RockNRoll,
-            world_id: 0x0,
-            channel_id: 0x0,
-            unk2: 0x0,
-        },
+        Service::GlobalMgrSvr { id: 0xfd },
+        Service::RockNRoll,
         BufReader::with_capacity(65536, stream),
     )
     .await
