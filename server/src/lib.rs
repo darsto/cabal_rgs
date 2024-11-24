@@ -12,6 +12,8 @@ pub mod crypto;
 pub mod event;
 #[cfg(feature = "gms")]
 pub mod gms;
+#[cfg(feature = "login")]
+pub mod login;
 #[cfg(feature = "proxy")]
 pub mod proxy;
 

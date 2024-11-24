@@ -6,7 +6,7 @@ use log::{info, trace};
 use packet::pkt_common::Connect;
 use packet::{Packet, Payload};
 use server::executor;
-use server::packet_stream::{Service, IPCPacketStream};
+use server::packet_stream::{IPCPacketStream, Service};
 
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;

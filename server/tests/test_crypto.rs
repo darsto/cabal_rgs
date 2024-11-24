@@ -6,7 +6,7 @@ use futures::io::BufReader;
 use log::{info, trace};
 use packet::{Block, Packet, Payload};
 use server::executor;
-use server::packet_stream::{Service, IPCPacketStream};
+use server::packet_stream::{IPCPacketStream, Service};
 
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;

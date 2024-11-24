@@ -2,7 +2,7 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use crate::executor;
-use crate::packet_stream::{Service, IPCPacketStream};
+use crate::packet_stream::{IPCPacketStream, Service};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Args;
 use futures::io::BufReader;

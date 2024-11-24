@@ -9,11 +9,12 @@ name = "cabalsrv"
 path = "src/main.rs"
 
 [features]
-default = ["event", "crypto", "proxy", "gms"]
+default = ["event", "crypto", "proxy", "gms", "login"]
 event = []
 crypto = []
 proxy = []
 gms = []
+login = []
 
 [dependencies]
 packet = { path = "../packet" }

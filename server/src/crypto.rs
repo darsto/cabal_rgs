@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use crate::packet_stream::{Service, IPCPacketStream};
+use crate::packet_stream::{IPCPacketStream, Service};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::{executor, impl_registry_entry};
 use aria::BlockExt;
