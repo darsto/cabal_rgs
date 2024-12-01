@@ -4,7 +4,7 @@
 use crate::executor;
 use crate::packet_stream::{PacketStream, StreamConfig};
 use clap::Args;
-use futures::{AsyncBufRead, AsyncReadExt, AsyncWrite};
+use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
 use log::{error, info, trace};
 
 use std::fmt::Display;
@@ -74,7 +74,7 @@ impl Listener {
 
             let conn = UpConnection {
                 id: upstream_id,
-                stream: PacketStream::new_buffered(
+                stream: PacketStream::new(
                     upstream.0,
                     StreamConfig::ipc("?".into(), "?".into()),
                 ),
@@ -88,7 +88,7 @@ impl Listener {
             let conn2 = DwConnection {
                 id: downstream_id,
                 stream: PacketStream::new(upstream.1, StreamConfig::ipc("?".into(), "?".into())),
-                downstream: PacketStream::new_buffered(
+                downstream: PacketStream::new(
                     downstream.0,
                     StreamConfig::ipc("?".into(), "?".into()),
                 ),
@@ -123,7 +123,7 @@ impl Listener {
 }
 
 #[derive(Debug)]
-pub struct UpConnection<U: Unpin + AsyncBufRead, D: Unpin + AsyncWrite> {
+pub struct UpConnection<U: Unpin + AsyncRead, D: Unpin + AsyncWrite> {
     pub id: i32,
     pub stream: PacketStream<U>,
     pub downstream: PacketStream<D>,
@@ -131,26 +131,26 @@ pub struct UpConnection<U: Unpin + AsyncBufRead, D: Unpin + AsyncWrite> {
 }
 
 #[derive(Debug)]
-pub struct DwConnection<U: Unpin + AsyncWrite, D: Unpin + AsyncBufRead> {
+pub struct DwConnection<U: Unpin + AsyncWrite, D: Unpin + AsyncRead> {
     pub id: i32,
     pub stream: PacketStream<U>,
     pub downstream: PacketStream<D>,
     pub args: Arc<crate::args::Config>,
 }
 
-impl<U: Unpin + AsyncBufRead, D: Unpin + AsyncWrite> Display for UpConnection<U, D> {
+impl<U: Unpin + AsyncRead, D: Unpin + AsyncWrite> Display for UpConnection<U, D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Conn #{}", self.id)
     }
 }
 
-impl<U: Unpin + AsyncWrite, D: Unpin + AsyncBufRead> Display for DwConnection<U, D> {
+impl<U: Unpin + AsyncWrite, D: Unpin + AsyncRead> Display for DwConnection<U, D> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Conn #{}", self.id)
     }
 }
 
-impl<U: Unpin + AsyncBufRead, D: Unpin + AsyncWrite> UpConnection<U, D> {
+impl<U: Unpin + AsyncRead, D: Unpin + AsyncWrite> UpConnection<U, D> {
     pub async fn recv_upstream(mut self) -> Result<()> {
         loop {
             let p = self.stream.recv().await?;
@@ -160,7 +160,7 @@ impl<U: Unpin + AsyncBufRead, D: Unpin + AsyncWrite> UpConnection<U, D> {
     }
 }
 
-impl<U: Unpin + AsyncWrite, D: Unpin + AsyncBufRead> DwConnection<U, D> {
+impl<U: Unpin + AsyncWrite, D: Unpin + AsyncRead> DwConnection<U, D> {
     pub async fn recv_downstream(mut self) -> Result<()> {
         loop {
             let p = self.downstream.recv().await?;

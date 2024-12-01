@@ -6,7 +6,6 @@ use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::{executor, impl_registry_entry};
 use aria::BlockExt;
 use clap::Args;
-use futures::io::BufReader;
 use log::{debug, error, info, trace};
 use packet::*;
 
@@ -62,7 +61,7 @@ impl Listener {
 
                 let stream = IPCPacketStream::from_host(
                     Service::RockNRoll,
-                    BufReader::with_capacity(65536, stream),
+                    stream,
                 )
                 .await
                 .unwrap();
@@ -96,7 +95,7 @@ fn xor_blocks_mut(blocks: &mut [Block]) {
 }
 
 pub struct Connection {
-    pub stream: IPCPacketStream<BufReader<Async<TcpStream>>>,
+    pub stream: IPCPacketStream<Async<TcpStream>>,
     pub listener: Arc<Listener>,
     pub conn_ref: Arc<BorrowRef<usize>>,
     pub shortkey: OnceCell<aria::Key>,

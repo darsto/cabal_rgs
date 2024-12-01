@@ -7,9 +7,11 @@ use crate::pkt_common::*;
 use crate::pkt_crypto::*;
 use crate::pkt_event::*;
 use crate::pkt_global::*;
+use crate::pkt_login::*;
 
 use crate::Header;
 use crate::Payload;
+use crate::PayloadDeserializeError;
 
 #[packet_list]
 pub enum Packet {
@@ -51,6 +53,13 @@ pub enum Packet {
     SetLoginInstance,
     MultipleLoginDisconnectRequest,
     MultipleLoginDisconnectResponse,
+
+    C2SConnect,
+    C2SCheckVersion,
+    C2SEnvironment,
+    C2SRequestRsaPubKey,
+    C2SAuthAccount,
+    C2SVerifyLinks,
 }
 
 impl Packet {
@@ -59,19 +68,20 @@ impl Packet {
         dst: &mut Vec<u8>,
         serialize_checksum: bool,
     ) -> Result<usize, crate::PayloadSerializeError> {
+        let hdr_len = Header::num_bytes(serialize_checksum);
         // reserve size for header
-        dst.resize(Header::SIZE, 0u8);
+        dst.resize(hdr_len, 0u8);
         // serialize into the rest of vector
         let payload_len = self.serialize_no_hdr(dst)?;
         let len: u16 = payload_len
-            .checked_add(Header::SIZE)
+            .checked_add(hdr_len)
             .unwrap()
             .try_into()
             .map_err(|_| crate::PayloadSerializeError::PayloadTooLong {
                 payload_len: payload_len as usize,
             })?;
         let hdr = Header::new(self.id(), len, serialize_checksum);
-        hdr.serialize(&mut dst[0..Header::SIZE]).unwrap();
+        hdr.serialize(&mut dst[0..hdr_len]).unwrap();
         Ok(len as usize)
     }
 
@@ -79,8 +89,16 @@ impl Packet {
         data: &[u8],
         serialize_checksum: bool,
     ) -> Result<Self, crate::PacketDeserializeError> {
+        let hdr_len = Header::num_bytes(serialize_checksum);
         let hdr = Header::deserialize(data, serialize_checksum)?;
-        let pktbuf = &data[Header::SIZE..(Header::SIZE + hdr.len as usize)];
+        if hdr.len as usize > data.len() {
+            return Err(PayloadDeserializeError::PacketTooLong {
+                len: hdr.len,
+                parsed: data.len() as _,
+            }
+            .into());
+        }
+        let pktbuf = &data[hdr_len..(hdr.len as usize)];
         Ok(Self::deserialize_no_hdr(hdr.id, pktbuf)?)
     }
 }

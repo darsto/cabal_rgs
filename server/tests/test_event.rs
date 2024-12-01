@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
-use futures::io::BufReader;
 use log::{info, trace};
 use packet::pkt_common::Connect;
 use packet::{Packet, Payload};
@@ -41,7 +40,7 @@ async fn start_client_test() {
             channel: 1,
         },
         Service::EventMgr,
-        BufReader::with_capacity(65536, stream),
+        stream,
     )
     .await
     .unwrap();

@@ -32,6 +32,8 @@ pub enum Service {
     Proxy(crate::proxy::ProxyArgs),
     #[cfg(feature = "gms")]
     Gms(crate::gms::GmsArgs),
+    #[cfg(feature = "login")]
+    Login(crate::login::LoginArgs),
 }
 
 /// Common (non-service-specific) configuration

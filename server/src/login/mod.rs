@@ -5,7 +5,6 @@ use crate::executor;
 use crate::packet_stream::{PacketStream, StreamConfig};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Args;
-use futures::io::BufReader;
 use log::{error, info};
 use user::UserConnHandler;
 
@@ -56,12 +55,12 @@ impl Listener {
             "Listener: started on {}",
             self.tcp_listener.get_ref().local_addr()?
         );
-        let _gmsargs = self
+        let _loginargs = self
             .args
             .services
             .iter()
             .find_map(|s| {
-                if let crate::args::Service::Gms(args) = s {
+                if let crate::args::Service::Login(args) = s {
                     Some(args)
                 } else {
                     None
@@ -78,12 +77,14 @@ impl Listener {
 
                 let id = stream.as_fd().as_raw_fd();
                 let stream = PacketStream::new(
-                    BufReader::with_capacity(65536, stream),
+                    stream,
                     StreamConfig {
                         self_name: "LoginSvr".into(),
                         other_name: "User".into(),
                         serialize_checksum: false,
                         deserialize_checksum: true,
+                        encode_tx: true,
+                        decode_rx: true,
                     },
                 );
 
@@ -100,7 +101,7 @@ impl Listener {
 
     async fn handle_new_conn(
         self: Arc<Listener>,
-        stream: PacketStream<BufReader<Async<TcpStream>>>,
+        stream: PacketStream<Async<TcpStream>>,
     ) -> Result<()> {
         let conn_ref = self
             .connections
@@ -118,7 +119,7 @@ impl Listener {
 struct Connection {
     conn_ref: Arc<BorrowRef<usize>>,
     listener: Arc<Listener>,
-    stream: PacketStream<BufReader<Async<TcpStream>>>,
+    stream: PacketStream<Async<TcpStream>>,
 }
 
 impl Display for Connection {

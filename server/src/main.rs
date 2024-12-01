@@ -64,6 +64,18 @@ fn main() {
         executor::spawn_local(async move { proxy_listener.listen().await }).detach();
     }
 
+    #[cfg(feature = "login")]
+    if args
+        .services
+        .iter()
+        .any(|f| matches!(f, server::args::Service::Login { .. }))
+    {
+        let sock = Async::<TcpListener>::bind(([0, 0, 0, 0], 38101)) //
+            .expect("Cannot bind to 38101");
+        let listener = server::login::Listener::new(sock, &args);
+        executor::spawn_local(async move { listener.listen().await }).detach();
+    }
+
     executor::run_until(future::pending::<()>());
     // this never returns
 }

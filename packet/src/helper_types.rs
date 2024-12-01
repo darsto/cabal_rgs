@@ -248,6 +248,12 @@ impl<const S: usize, T> From<Vec<T>> for BoundVec<S, T> {
     }
 }
 
+impl<const S: usize, T: Clone> From<&[T]> for BoundVec<S, T> {
+    fn from(value: &[T]) -> Self {
+        Self(value.to_vec())
+    }
+}
+
 /// Null-terminated String. Doesn't encode its length.
 #[derive(Debug, Default, Clone, PartialEq)]
 pub struct NulltermString(pub String);

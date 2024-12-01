@@ -16,7 +16,7 @@ pub struct Header {
     pub checksum: u32,
     pub id: u16,
 
-    serialize_checksum: bool,
+    pub serialize_checksum: bool,
 }
 
 impl Header {
@@ -32,8 +32,12 @@ impl Header {
         }
     }
 
+    pub fn num_bytes(serialize_checksum: bool) -> usize {
+        6 + (serialize_checksum as usize) * 4
+    }
+
     pub fn serialize(&self, dst: &mut [u8]) -> Result<usize, EncodeError> {
-        let expected_num_bytes = 6 + (self.serialize_checksum as usize) * 4;
+        let expected_num_bytes = Self::num_bytes(self.serialize_checksum);
         if dst.len() < expected_num_bytes {
             return Err(EncodeError::UnexpectedEnd);
         }
@@ -49,30 +53,33 @@ impl Header {
     }
 
     pub fn deserialize(
-        dst: &[u8],
+        src: &[u8],
         serialize_checksum: bool,
     ) -> Result<Self, HeaderDeserializeError> {
-        let expected_num_bytes = 6 + (serialize_checksum as usize) * 4;
-        if dst.len() < expected_num_bytes {
+        let expected_num_bytes = Self::num_bytes(serialize_checksum);
+        if src.len() < expected_num_bytes {
             return Err(DecodeError::UnexpectedEnd {
-                additional: expected_num_bytes - dst.len(),
+                additional: expected_num_bytes - src.len(),
             }
             .into());
         }
 
-        let magic = u16::from_le_bytes(dst[0..2].try_into().unwrap());
+        let magic = u16::from_le_bytes(src[0..2].try_into().unwrap());
         if magic != Header::MAGIC {
             return Err(HeaderDeserializeError::InvalidMagic { found: magic });
         }
 
-        let len = u16::from_le_bytes(dst[2..4].try_into().unwrap());
-        if (len as usize) < Header::SIZE {
-            return Err(HeaderDeserializeError::TooSmall { size: len });
+        let len = u16::from_le_bytes(src[2..4].try_into().unwrap());
+        if (len as usize) < expected_num_bytes {
+            return Err(HeaderDeserializeError::TooSmall {
+                expected: expected_num_bytes as _,
+                found: len,
+            });
         }
 
         if serialize_checksum {
-            let checksum = u32::from_le_bytes(dst[4..8].try_into().unwrap());
-            let id = u16::from_le_bytes(dst[8..10].try_into().unwrap());
+            let checksum = u32::from_le_bytes(src[4..8].try_into().unwrap());
+            let id = u16::from_le_bytes(src[8..10].try_into().unwrap());
             Ok(Self {
                 len,
                 checksum,
@@ -80,7 +87,7 @@ impl Header {
                 serialize_checksum,
             })
         } else {
-            let id = u16::from_le_bytes(dst[4..6].try_into().unwrap());
+            let id = u16::from_le_bytes(src[4..6].try_into().unwrap());
             Ok(Self {
                 len,
                 checksum: 0x0,
@@ -98,11 +105,8 @@ pub enum HeaderDeserializeError {
         Header::MAGIC
     )]
     InvalidMagic { found: u16 },
-    #[error(
-        "Packet size smaller than header size (Header size {:#04x}, got {size:#04x})",
-        Header::SIZE
-    )]
-    TooSmall { size: u16 },
+    #[error("Packet size smaller than header size (expected {expected:#04x}, got {found:#04x})")]
+    TooSmall { expected: u16, found: u16 },
     #[error("Deserialize failed ({0})")]
     DeserializeError(#[from] DecodeError),
 }
@@ -166,19 +170,20 @@ pub trait Payload:
         dst: &mut Vec<u8>,
         serialize_checksum: bool,
     ) -> Result<usize, PayloadSerializeError> {
+        let hdr_len = Header::num_bytes(serialize_checksum);
         // reserve size for header
-        dst.resize(Header::SIZE, 0u8);
+        dst.resize(hdr_len, 0u8);
         // serialize into the rest of vector
         let payload_len = self.serialize_no_hdr(dst)?;
         let len: u16 = payload_len
-            .checked_add(Header::SIZE)
+            .checked_add(hdr_len)
             .unwrap()
             .try_into()
             .map_err(|_| PayloadSerializeError::PayloadTooLong {
                 payload_len: payload_len as usize,
             })?;
         let hdr = Header::new(self.id(), len, serialize_checksum);
-        hdr.serialize(&mut dst[0..Header::SIZE])?;
+        hdr.serialize(&mut dst[0..hdr_len])?;
         Ok(len as usize)
     }
 

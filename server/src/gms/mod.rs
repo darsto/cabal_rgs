@@ -5,7 +5,6 @@ use crate::executor;
 use crate::packet_stream::{IPCPacketStream, Service};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Args;
-use futures::io::BufReader;
 use futures::AsyncWriteExt;
 use log::{error, info};
 use packet::pkt_common::ServiceID;
@@ -91,7 +90,7 @@ impl Listener {
             let stream = IPCPacketStream::from_conn(
                 Service::GlobalMgrSvr { id: 0x80 },
                 Service::DBAgent,
-                BufReader::with_capacity(65536, db_stream),
+                db_stream,
             )
             .await
             .unwrap();
@@ -122,7 +121,7 @@ impl Listener {
 
                 let stream = IPCPacketStream::from_host(
                     Service::GlobalMgrSvr { id: 0x80 },
-                    BufReader::with_capacity(65536, stream),
+                    stream,
                 )
                 .await
                 .unwrap();
@@ -141,7 +140,7 @@ impl Listener {
 
     async fn handle_new_conn(
         self: Arc<Listener>,
-        stream: IPCPacketStream<BufReader<Async<TcpStream>>>,
+        stream: IPCPacketStream<Async<TcpStream>>,
     ) -> Result<()> {
         let id = Connect::from(stream.other_id);
         if let Some(conn) = self.connections.refs.iter().find(|conn| {
@@ -189,7 +188,7 @@ impl Listener {
 struct Connection {
     conn_ref: Arc<BorrowRef<pkt_common::Connect>>,
     listener: Arc<Listener>,
-    stream: IPCPacketStream<BufReader<Async<TcpStream>>>,
+    stream: IPCPacketStream<Async<TcpStream>>,
 }
 
 impl Display for Connection {

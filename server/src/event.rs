@@ -5,7 +5,6 @@ use crate::packet_stream::{IPCPacketStream, Service};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use crate::{executor, impl_registry_entry};
 use clap::Args;
-use futures::io::BufReader;
 use log::{error, info, trace};
 
 use std::any::TypeId;
@@ -57,7 +56,7 @@ impl Listener {
             executor::spawn_local(async move {
                 let stream = IPCPacketStream::from_host(
                     Service::EventMgr,
-                    BufReader::with_capacity(65536, stream),
+                    stream,
                 )
                 .await
                 .unwrap();
@@ -85,7 +84,7 @@ impl Listener {
 }
 
 pub struct Connection {
-    pub stream: IPCPacketStream<BufReader<Async<TcpStream>>>,
+    pub stream: IPCPacketStream<Async<TcpStream>>,
     pub listener: Arc<Listener>,
     pub conn_ref: Arc<BorrowRef<usize>>,
 }

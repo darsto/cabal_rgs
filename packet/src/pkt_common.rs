@@ -41,7 +41,7 @@ impl std::fmt::Display for Connect {
 #[repr(u8)]
 pub enum ServiceID {
     #[default]
-    WorldSvr = 0xa1,     // 161
+    WorldSvr = 0xa1, // 161
     LoginSvr = 0xc3,     // 195
     DBAgent = 0xd4,      // 212
     AgentShop = 0xe9,    // 233

@@ -468,6 +468,13 @@ mod tests {
             bincode::decode_from_slice::<ServerState, _>(&buf, config::legacy()).unwrap();
         println!("len={len}, {:?}", data);
     }
+
+    #[test]
+    fn test_decode_2() {
+        let buf = b"\xe2\xb7\x1d\x00\x00\x00\x00\x00\x15\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x09\x00\x00";
+        let data = Packet::deserialize(buf, true).unwrap();
+        println!("{:?}", data);
+    }
 }
 
 /*

@@ -2,7 +2,6 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use aria::{BlockExt, BlockSlice};
-use futures::io::BufReader;
 use log::{info, trace};
 use packet::{Block, Packet, Payload};
 use server::executor;
@@ -54,7 +53,7 @@ async fn start_client_test() {
     let mut conn = IPCPacketStream::from_conn(
         Service::GlobalMgrSvr { id: 0xfd },
         Service::RockNRoll,
-        BufReader::with_capacity(65536, stream),
+        stream,
     )
     .await
     .unwrap();

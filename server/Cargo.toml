@@ -3,10 +3,15 @@ name = "server"
 version = "0.1.0"
 edition = "2021"
 exclude = ["/.*"]
+default-run = "cabalsrv"
 
 [[bin]]
 name = "cabalsrv"
 path = "src/main.rs"
+
+[[bin]]
+name = "gen_rsa_key"
+path = "src/gen_rsa_key.rs"
 
 [features]
 default = ["event", "crypto", "proxy", "gms", "login"]
@@ -32,3 +37,11 @@ bincode = "2.0.0-rc.3"
 rand = "0.8.5"
 log = "0.4.20"
 env_logger = "0.10.1"
+rsa = { version = "0.9.7", features = ["sha2"] }
+sha1 = "0.10.6"
+
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+
+[profile.dev.package.rsa]
+opt-level = 3
