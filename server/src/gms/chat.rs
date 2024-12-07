@@ -16,9 +16,9 @@ pub struct GlobalChatHandler {
 }
 crate::impl_registry_entry!(
     GlobalChatHandler,
-    pkt_common::Connect,
-    .conn,
-    .conn.conn_ref
+    RefData = pkt_common::Connect,
+    data = .conn,
+    borrow_ref = .conn.conn_ref
 );
 
 impl GlobalChatHandler {

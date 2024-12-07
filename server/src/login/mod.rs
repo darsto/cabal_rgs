@@ -2,9 +2,11 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use crate::executor;
-use crate::packet_stream::{PacketStream, StreamConfig};
+use crate::packet_stream::{IPCPacketStream, PacketStream, Service, StreamConfig};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Args;
+use db::GlobalDbHandler;
+use gms::GmsHandler;
 use log::{error, info};
 use user::UserConnHandler;
 
@@ -12,12 +14,14 @@ use core::any::TypeId;
 use std::fmt::Display;
 use std::net::TcpStream;
 use std::os::fd::{AsFd, AsRawFd};
-use std::sync::Weak;
+use std::sync::{OnceLock, Weak};
 use std::{net::TcpListener, sync::Arc};
 
 use anyhow::Result;
 use smol::Async;
 
+mod db;
+mod gms;
 mod user;
 
 /// LoginSvr replacement
@@ -27,14 +31,16 @@ pub struct LoginArgs {}
 pub struct Listener {
     me: Weak<Listener>,
     tcp_listener: Async<TcpListener>,
-    connections: BorrowRegistry<usize>,
+    globaldb: OnceLock<Arc<BorrowRef<()>>>,
+    gms: OnceLock<Arc<BorrowRef<()>>>,
+    connections: BorrowRegistry<u32>,
     args: Arc<crate::args::Config>,
 }
 
 impl std::fmt::Display for Listener {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_fmt(format_args!(
-            "GMS:{}",
+            "LoginSvr:{}",
             self.tcp_listener.get_ref().local_addr().unwrap().port()
         ))
     }
@@ -45,7 +51,9 @@ impl Listener {
         Arc::new_cyclic(|me| Self {
             me: me.clone(),
             tcp_listener,
-            connections: BorrowRegistry::new("GMS", 16),
+            globaldb: OnceLock::new(),
+            gms: OnceLock::new(),
+            connections: BorrowRegistry::new("LoginSvr", 16),
             args: args.clone(),
         })
     }
@@ -68,12 +76,15 @@ impl Listener {
             })
             .unwrap();
 
+        self.connect_to_globaldb().await;
+        self.connect_to_gms().await;
+
         loop {
             let (stream, _) = self.tcp_listener.accept().await.unwrap();
             let listener = self.me.upgrade().unwrap();
             // Give the connection handler its own background task
             executor::spawn_local(async move {
-                info!("Listener: new connection ...");
+                info!("Listener: new user connection ...");
 
                 let id = stream.as_fd().as_raw_fd();
                 let stream = PacketStream::new(
@@ -114,10 +125,62 @@ impl Listener {
         };
         UserConnHandler::new(conn).handle().await
     }
+
+    async fn connect_to_globaldb(&self) {
+        let db_stream = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180))
+            .await
+            .unwrap();
+
+        let listener = self.me.upgrade().unwrap();
+        // Give the connection handler its own background task
+        executor::spawn_local(async move {
+            let stream = IPCPacketStream::from_conn(Service::LoginSvr, Service::DBAgent, db_stream)
+                .await
+                .unwrap();
+
+            let conn_ref = BorrowRef::new(TypeId::of::<GlobalDbHandler>(), ());
+            listener.globaldb.set(conn_ref.clone());
+
+            let ret = GlobalDbHandler::new(listener, stream, conn_ref)
+                .handle()
+                .await;
+
+            info!("Listener: DB connection closed => {ret:?}");
+            // TODO: reconnect?
+        })
+        .detach();
+    }
+
+    async fn connect_to_gms(&self) {
+        let stream = Async::<TcpStream>::connect(([127, 0, 0, 1], 38170))
+            .await
+            .unwrap();
+
+        let listener = self.me.upgrade().unwrap();
+        // Give the connection handler its own background task
+        executor::spawn_local(async move {
+            let stream = IPCPacketStream::from_conn(
+                Service::LoginSvr,
+                Service::GlobalMgrSvr { id: 0 },
+                stream,
+            )
+            .await
+            .unwrap();
+
+            let conn_ref = BorrowRef::new(TypeId::of::<GmsHandler>(), ());
+            listener.gms.set(conn_ref.clone());
+
+            let ret = GmsHandler::new(listener, stream, conn_ref).handle().await;
+
+            info!("Listener: GMS connection closed => {ret:?}");
+            // TODO: reconnect?
+        })
+        .detach();
+    }
 }
 
 struct Connection {
-    conn_ref: Arc<BorrowRef<usize>>,
+    conn_ref: Arc<BorrowRef<u32>>,
     listener: Arc<Listener>,
     stream: PacketStream<Async<TcpStream>>,
 }

@@ -74,10 +74,7 @@ impl Listener {
 
             let conn = UpConnection {
                 id: upstream_id,
-                stream: PacketStream::new(
-                    upstream.0,
-                    StreamConfig::ipc("?".into(), "?".into()),
-                ),
+                stream: PacketStream::new(upstream.0, StreamConfig::ipc("?".into(), "?".into())),
                 downstream: PacketStream::new(
                     downstream.1,
                     StreamConfig::ipc("?".into(), "?".into()),

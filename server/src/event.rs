@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
+use crate::executor;
 use crate::packet_stream::{IPCPacketStream, Service};
 use crate::registry::{BorrowRef, BorrowRegistry};
-use crate::{executor, impl_registry_entry};
 use clap::Args;
 use log::{error, info, trace};
 
@@ -54,12 +54,9 @@ impl Listener {
             // Give the connection handler its own background task
             let listener = self.me.upgrade().unwrap();
             executor::spawn_local(async move {
-                let stream = IPCPacketStream::from_host(
-                    Service::EventMgr,
-                    stream,
-                )
-                .await
-                .unwrap();
+                let stream = IPCPacketStream::from_host(Service::EventMgr, stream)
+                    .await
+                    .unwrap();
 
                 let conn = Connection {
                     stream,
@@ -88,7 +85,12 @@ pub struct Connection {
     pub listener: Arc<Listener>,
     pub conn_ref: Arc<BorrowRef<usize>>,
 }
-impl_registry_entry!(Connection, usize, .stream, .conn_ref);
+crate::impl_registry_entry!(
+    Connection,
+    RefData = usize,
+    data = .stream,
+    borrow_ref =.conn_ref
+);
 
 impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

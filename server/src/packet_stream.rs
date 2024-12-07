@@ -290,6 +290,12 @@ impl From<Service> for Connect {
                 channel_id: 0,
                 unk2: 0,
             },
+            E::LoginSvr => Connect {
+                service,
+                world_id: 0x80,
+                channel_id: 0x1,
+                unk2: 0,
+            },
             _ => Connect {
                 service,
                 world_id: 0,

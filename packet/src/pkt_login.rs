@@ -128,3 +128,156 @@ pub struct C2SVerifyLinks {
 pub struct S2CVerifyLinks {
     unk: BoundVec<0, u8>,
 }
+
+#[packet(0xc3d)]
+pub struct RequestClientVersion;
+
+#[packet(0x1e)]
+pub struct RequestAuthAccount {
+    server_id: u8, // 0x80?
+    channel_id: u8, // 1?
+    user_idx: u16, // 0?
+    ip: [u8; 4],
+    username: Arr<u8, 33>,
+    password: Arr<u8, 97>,
+    zero: u8,
+}
+assert_def_packet_size!(RequestAuthAccount, 139);
+
+#[packet(0x1f)]
+pub struct ResponseAuthAccount {
+    server_id: u8, // 0x80?
+    channel_id: u8, // 1?
+    user_idx: u16, // 0?
+    ip: [u8; 4],
+    username: Arr<u8, 33>,
+    user_num: u32, // 1?
+    login_idx: u8, // 0?
+    result: u8, // 0x20 - ok
+    /*
+    0x20 - ok
+    0x21 - failed
+    0x22 - already logged in?
+    0x23 - outofservice
+    0x24 - time expired?
+    0x25 - ip blocked
+    0x26 - id blocked
+    0x27 - free id?
+    0x28 - onlycafe?
+    0x29 - preregist?
+    0x2a - withdrawl?
+    0x2b - passlock?
+    0x2c - failedgash?
+    0x2d - antiaddict stuff
+    0x2e - antiaddict stuff
+     */
+    resident_num: u32, // d0 bf 0b 0 ??
+    unk5: u32, // 0
+    service_type: u32, // 5
+    service_expire_time: u32, // eb 81 3f 78
+    pcbang_remaining_time: u32, // 0?
+    unkkey: Arr<u8, 33>,
+    unk9: u8, // 0
+    pcpoint: u32, // 0
+    unk10: u8, // 1
+    unk11: u8, // 0
+    unk12: u32, // 1
+    unk13: u32, // 0
+    unk14: u32, // 0
+    unk15: u32, // 0
+    unk16: u32, // 0
+    unk17: u8, // 0
+    unk18: Arr<u8, 32>, // 0?
+    unk19: u8, // 0
+    unk20: u32, // 0
+    unk21: u32, // 0
+    unk22: u32, // 0
+    unk23: u32, // 0
+    unk24: u32, // 0
+    unk25: u32, // 0
+    unk26: u32, // 0x18c - login counter??
+    unk27: u16, // 0x301
+}
+assert_def_packet_size!(ResponseAuthAccount, 191);
+
+/*
+> @annotate-cfg [clamp = [7, 54]]
+> @annotate-cfg [rangeFn = { start = 8 + start * 3 - 1; end = 8 + end * 3 - 2 }]
+
+
+0000                                             80 01   6PV3............
+> @annotate [14-15] server_id
+> @annotate [15-16] channel_id
+0010   00 00 0a 02 00 ce 61 64 6d 69 6e 00 00 00 00 00   ......admin.....
+> @annotate [0-2] user_idx
+> @annotate [2-6]  ip
+0020   00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
+0030   00 00 00 00 00 00 00 01 00 00 00 00 20 d0 bf 0b   ............ ...
+> @annotate [7-11] user_num
+> @annotate [11-12] login_idx ??
+> @annotate [12-13] result ??
+> @annotate [13-16] resident_num
+0040   00 00 00 00 00 05 00 00 00 eb 81 3f 78 00 00 00   ...........?x...
+> @annotate [0-1] resident_num
+> @annotate [1-5] unk5
+> @annotate [5-9] unk6
+> @annotate [9-13] unk7
+> @annotate [13-16] unk8
+0050   00 41 35 31 32 30 36 35 33 41 41 37 33 34 36 44   .A5120653AA7346D
+> @annotate [0-1] unk8
+> @annotate [1-16]
+0060   35 38 34 41 46 30 30 36 39 36 44 35 36 46 37 31   584AF00696D56F71
+> @annotate [0-16]
+0070   45 00 00 00 00 00 00 01 00 01 00 00 00 00 00 00   E...............
+0080   00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
+0090   00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
+00a0   00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
+00b0   00 00 00 5e 0a 00 00 90 71 7a 47 00 00 00 00 90   ...^....qzG.....
+00c0   71 7a 47 00 00 00 00 8c 01 00 00 01 03            qzG..........
+
+
+
+
+
+0000   e2 b7 c9 00 00 00 00 00 1f 00 80 01 00 00 0a 02   ................
+0010   00 ce 61 64 6d 69 6e 00 00 00 00 00 00 00 00 00   ..admin.........
+0020   00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
+0030   00 00 00 01 00 00 00 00 20 d0 bf 0b 00 00 00 00   ........ .......
+0040   00 05 00 00 00 eb 81 3f 78 00 00 00 00 41 35 31   .......?x....A51
+> @annotate [1-5] service kind
+> @annotate [5-9] service expire time
+> @annotate [9-13] pcbang remaining time
+0050   32 30 36 35 33 41 41 37 33 34 36 44 35 38 34 41   20653AA7346D584A
+0060   46 30 30 36 39 36 44 35 36 46 37 31 45 00 00 00   F00696D56F71E...
+> @annotate [13-14] always null terminated
+> @annotate [15-16] pcpoint
+0070   00 00 00 01 00 01 00 00 00 00 00 00 00 00 00 00   ................
+> @annotate [4-5]
+> @annotate [0-3] pcpoint
+> @annotate [5-9] unk
+> @annotate [9-13] unk
+> @annotate [13-16]
+0080   00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
+> @annotate [0-1]
+> @annotate [1-5]
+> @annotate [5-9]
+> @annotate [9-10]
+0090   00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00   ................
+00a0   00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 5e   ...............^
+> @annotate [10-11]
+> @annotate [11-15]
+> @annotate [15-16]
+00b0   0a 00 00 90 71 7a 47 00 00 00 00 90 71 7a 47 00   ....qzG.....qzG.
+> @annotate [15-16]
+> @annotate [11-15] unk
+> @annotate [0-3]
+> @annotate [7-11]
+> @annotate [3-7]
+00c0   00 00 00 8c 01 00 00 01 03                        .........
+> @annotate [0-3]
+> @annotate [7-9]
+> @annotate [3-7] login counter
+
+
+
+ */

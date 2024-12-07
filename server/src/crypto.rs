@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
+use crate::executor;
 use crate::packet_stream::{IPCPacketStream, Service};
 use crate::registry::{BorrowRef, BorrowRegistry};
-use crate::{executor, impl_registry_entry};
 use aria::BlockExt;
 use clap::Args;
 use log::{debug, error, info, trace};
@@ -59,12 +59,9 @@ impl Listener {
             executor::spawn_local(async move {
                 info!("Listener: new connection ...");
 
-                let stream = IPCPacketStream::from_host(
-                    Service::RockNRoll,
-                    stream,
-                )
-                .await
-                .unwrap();
+                let stream = IPCPacketStream::from_host(Service::RockNRoll, stream)
+                    .await
+                    .unwrap();
                 let conn = Connection {
                     stream,
                     listener,
@@ -100,7 +97,12 @@ pub struct Connection {
     pub conn_ref: Arc<BorrowRef<usize>>,
     pub shortkey: OnceCell<aria::Key>,
 }
-impl_registry_entry!(Connection, usize, .stream, .conn_ref);
+crate::impl_registry_entry!(
+    Connection,
+    RefData = usize,
+    data = .stream,
+    borrow_ref = .conn_ref
+);
 
 impl Display for Connection {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

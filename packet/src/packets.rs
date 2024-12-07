@@ -54,12 +54,17 @@ pub enum Packet {
     MultipleLoginDisconnectRequest,
     MultipleLoginDisconnectResponse,
 
+    // Login Manager
     C2SConnect,
     C2SCheckVersion,
     C2SEnvironment,
     C2SRequestRsaPubKey,
     C2SAuthAccount,
     C2SVerifyLinks,
+
+    // Login Manager
+    RequestClientVersion,
+    ResponseAuthAccount,
 }
 
 impl Packet {

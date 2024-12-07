@@ -24,11 +24,7 @@ impl<T> BorrowRegistry<T> {
     }
 
     pub fn add_borrower(&self, type_id: TypeId, data: T) -> Option<Arc<BorrowRef<T>>> {
-        let conn_ref = Arc::new(BorrowRef {
-            type_id,
-            data,
-            borrower: BorrowMutex::new(),
-        });
+        let conn_ref = BorrowRef::new(type_id, data);
         self.refs.push(conn_ref.clone()).ok()?;
         Some(conn_ref)
     }
@@ -104,13 +100,12 @@ pub trait Entry: AsAny + Send + std::fmt::Display {
         async {
             let conn_ref = self.borrow_ref().clone();
             let mut future = core::pin::pin!(future.fuse());
-            let mut wait_to_lend = core::pin::pin!(conn_ref.borrower.wait_to_lend().fuse());
             loop {
                 async_proc::select! {
                     ret = future => {
                         return ret;
                     }
-                    _ = wait_to_lend => {
+                    _ = conn_ref.borrower.wait_to_lend().fuse() => {
                         conn_ref.borrower.lend(self as &mut dyn Entry<RefData = Self::RefData>).unwrap().await;
                     }
                 }
@@ -136,7 +131,24 @@ impl<T: Any> AsAny for T {
 
 #[macro_export]
 macro_rules! impl_registry_entry {
-    ($handler:ident, $borrow_ref_type:path, $(. $data_name:ident)+, $(. $borrow_ref_name:ident)+) => {
+    ($handler:ty, RefData = $borrow_ref_type:ty, data = $(. $data_name:ident)+, borrow_ref = $(. $borrow_ref_name:ident)+) => {
+        impl $crate::registry::Entry for $handler {
+            type RefData = $borrow_ref_type;
+            fn borrower_id() -> ::core::any::TypeId {
+                ::core::any::TypeId::of::<Self>()
+            }
+            fn data(&self) -> &dyn ::core::any::Any {
+                &self $(. $data_name)+ as _
+            }
+            fn data_mut(&mut self) -> &mut dyn ::core::any::Any {
+                &mut self $(. $data_name)+ as _
+            }
+            fn borrow_ref(&self) -> &::std::sync::Arc<crate::registry::BorrowRef<Self::RefData>> {
+                &self $(. $borrow_ref_name)+
+            }
+        }
+    };
+    ($handler:ty, RefData = $borrow_ref_type:ty, data = $(. $data_name:ident)+, borrow_ref = $(. $borrow_ref_name:ident)+) => {
         impl $crate::registry::Entry for $handler {
             type RefData = $borrow_ref_type;
             fn borrower_id() -> ::core::any::TypeId {
@@ -166,6 +178,14 @@ pub struct BorrowRef<T> {
 }
 
 impl<T> BorrowRef<T> {
+    pub fn new(type_id: TypeId, data: T) -> Arc<BorrowRef<T>> {
+        Arc::new(BorrowRef {
+            type_id,
+            data,
+            borrower: BorrowMutex::new(),
+        })
+    }
+
     pub async fn borrow<'a, H: Entry>(&'a self) -> Result<BorrowGuardArmed<'a, H>, ()>
     where
         T: 'static,

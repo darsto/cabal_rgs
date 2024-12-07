@@ -9,6 +9,7 @@ use anyhow::Result;
 use async_proc::select;
 use futures::FutureExt;
 use log::warn;
+use pkt_login::RequestAuthAccount;
 use rsa::pkcs1::DecodeRsaPrivateKey;
 use rsa::pkcs1::EncodeRsaPublicKey;
 use rsa::Oaep;
@@ -18,6 +19,7 @@ use packet::pkt_global::*;
 use packet::*;
 use sha1::Sha1;
 
+use crate::login::db::GlobalDbHandler;
 use crate::registry::Entry;
 
 use super::Connection;
@@ -30,9 +32,9 @@ pub struct UserConnHandler {
 }
 crate::impl_registry_entry!(
     UserConnHandler,
-    usize,
-    .conn,
-    .conn.conn_ref
+    RefData = u32,
+    data = .conn,
+    borrow_ref = .conn.conn_ref
 );
 
 impl std::fmt::Display for UserConnHandler {
@@ -152,22 +154,52 @@ impl UserConnHandler {
                 bail!("{self}: Expected C2SRequestRsaPubKey packet, got {p:?}");
             };
 
-            let decrypted = self.rsa_priv
+            let decrypted = self
+                .rsa_priv
                 .decrypt(Oaep::new::<Sha1>(), &*a.encoded_pass)
                 .map_err(|e| anyhow!("Can't decode password: {e:?}"))?;
             let username = std::str::from_utf8(&decrypted[0..33])
                 .map_err(|_| anyhow!("Non-utf8 username (2)"))?;
-            let pass = std::str::from_utf8(&decrypted[33..])
+            let password = std::str::from_utf8(&decrypted[33..])
                 .map_err(|_| anyhow!("Non-utf8 password (2)"))?;
             let saved_username = self.username.as_ref().unwrap();
             if username != saved_username {
                 bail!("Received auth packet for another username (expected={saved_username}, got={username}");
             }
 
-            println!("username = {username}; pass = {pass}");
+            println!("username = {username}; password = {password}");
 
-            // send 0x1e to globaldbagent
-            // wait for 0x1f
+            let listener = self.conn.listener.clone();
+            let auth_resp = self
+                .lend_self_until(async {
+                    let globaldb = listener.globaldb.get().unwrap();
+                    let mut globaldb = globaldb.borrow::<GlobalDbHandler>().await.unwrap();
+
+                    globaldb
+                        .stream
+                        .send(&RequestAuthAccount {
+                            server_id: 0x80,
+                            channel_id: 1,
+                            user_idx: 0, // fixme
+                            ip: [10, 2, 0, 143],
+                            username: username.as_bytes().into(),
+                            password: password.as_bytes().into(),
+                            zero: 0,
+                        })
+                        .await
+                        .unwrap();
+
+                    let p = globaldb.stream.recv().await.unwrap();
+                    let Packet::ResponseAuthAccount(a) = p else {
+                        bail!(
+                            "{}: Expected ResponseAuthAccount packet, got {p:?}",
+                            &*globaldb
+                        );
+                    };
+
+                    Ok(a)
+                })
+                .await?;
 
             // send server list (packet 121) to the client
             // and packet 128
@@ -177,7 +209,14 @@ impl UserConnHandler {
             // wait for 0x16
             // (a 0x16 will be also sent to WorldSvr)
 
+            // send 120 (system message) to the user
 
+            // occasionally send 0x34 to gms - server_id: 0x80, channel_id: 1, rest zeroes
+            // wait for 0x35 with server list
+
+            // client may send another 122 (check version)
+
+            // wait for packet 102 - verify links
         }
 
         loop {

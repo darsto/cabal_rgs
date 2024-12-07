@@ -119,12 +119,9 @@ impl Listener {
             executor::spawn_local(async move {
                 info!("Listener: new connection ...");
 
-                let stream = IPCPacketStream::from_host(
-                    Service::GlobalMgrSvr { id: 0x80 },
-                    stream,
-                )
-                .await
-                .unwrap();
+                let stream = IPCPacketStream::from_host(Service::GlobalMgrSvr { id: 0x80 }, stream)
+                    .await
+                    .unwrap();
                 let id = stream.other_id.clone();
 
                 info!("Listener: {id} connected");
