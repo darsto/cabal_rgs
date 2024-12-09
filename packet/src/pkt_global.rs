@@ -224,9 +224,9 @@ assert_def_packet_size!(ProfilePathResponse, 0x311 - Header::SIZE);
 #[packet]
 pub struct DuplexRouteHeader {
     route_hdr: RouteHeader,
-    unk1: u32,           // 2? 6?
-    unk2: u16,           // 0?
-    unk3: u16,           // 0? 4?
+    unique_idx: u32,           // 2? 6?
+    to_idx: u16,           // 0?
+    fm_idx: u16,           // 0? 4?
     resp_server_id: u8,  // 0x80?
     resp_group_id: u8,   // 0x1?
     resp_world_id: u8,   // 0?

@@ -37,6 +37,7 @@ pub struct UserConnHandler {
     auth_key: u32,
     username: Option<String>,
     db_auth_resp: Option<ResponseAuthAccount>,
+    user_idx: u16,
 }
 crate::impl_registry_entry!(
     UserConnHandler,
@@ -55,12 +56,18 @@ impl UserConnHandler {
     pub fn new(conn: Connection, ip: Ipv4Addr, auth_key: u32) -> Self {
         let ip = ip.octets();
 
+        let user_idx = conn
+            .listener
+            .unique_conn_idx
+            .fetch_add(1, Ordering::Relaxed);
+
         Self {
             conn,
             ip,
             auth_key,
             username: None,
             db_auth_resp: None,
+            user_idx,
         }
     }
 
@@ -75,7 +82,7 @@ impl UserConnHandler {
                 .send(&pkt_login::S2CConnect {
                     xor_seed_2,
                     auth_key: 0x4663, // rand
-                    user_idx: 0,
+                    user_idx: self.user_idx,
                     xor_key_idx,
                 })
                 .await
@@ -178,6 +185,7 @@ impl UserConnHandler {
             println!("username = {username}; password = {password}");
 
             let listener = self.conn.listener.clone();
+            let conn_unique_idx = self.user_idx;
             self.lend_self_until(async {
                 let globaldb = listener.globaldb.get().unwrap();
                 let mut globaldb = globaldb.borrow::<GlobalDbHandler>().await.unwrap();
@@ -187,7 +195,7 @@ impl UserConnHandler {
                     .send(&RequestAuthAccount {
                         server_id: 0x80,
                         channel_id: 1,
-                        user_idx: 0, // fixme
+                        user_idx: conn_unique_idx,
                         ip: [10, 2, 0, 143],
                         username: username.as_bytes().into(),
                         password: password.as_bytes().into(),
@@ -386,7 +394,7 @@ impl UserConnHandler {
                 bail!("{self}: Expected C2SVerifyLinks packet, got {p:?}");
             };
 
-            self.verify_links(p).await?;
+            self.handle_verify_links(p).await?;
         }
 
         // then we'll get C2SCheckVersion, followed by C2SVerifyLinks.
@@ -413,7 +421,7 @@ impl UserConnHandler {
         }
     }
 
-    async fn verify_links(&mut self, p: C2SVerifyLinks) -> Result<()> {
+    async fn handle_verify_links(&mut self, p: C2SVerifyLinks) -> Result<()> {
         let listener = self.conn.listener.clone();
         let auth_resp = self.db_auth_resp.as_ref().unwrap();
         let verify_links = VerifyLinks {
@@ -425,13 +433,9 @@ impl UserConnHandler {
                     world_id: 0,
                     process_id: 0,
                 },
-                unk1: self
-                    .conn
-                    .listener
-                    .verify_links_unique_idx
-                    .fetch_add(1, Ordering::Relaxed), // increasing?
-                unk2: 0,
-                unk3: auth_resp.user_idx,
+                unique_idx: self.user_idx as u32,
+                to_idx: p.unique_idx,
+                fm_idx: auth_resp.user_idx,
                 resp_server_id: 128,
                 resp_group_id: 1,
                 resp_world_id: 0,

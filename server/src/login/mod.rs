@@ -15,7 +15,7 @@ use core::any::TypeId;
 use std::fmt::Display;
 use std::net::{IpAddr, TcpStream};
 use std::os::fd::{AsFd, AsRawFd};
-use std::sync::atomic::AtomicU32;
+use std::sync::atomic::AtomicU16;
 use std::sync::{OnceLock, Weak};
 use std::{net::TcpListener, sync::Arc};
 
@@ -37,7 +37,8 @@ pub struct Listener {
     gms: OnceLock<Arc<BorrowRef<()>>>,
     connections: BorrowRegistry<u32>,
     args: Arc<crate::args::Config>,
-    pub verify_links_unique_idx: AtomicU32,
+    // needed for the existing IPC protocol
+    pub unique_conn_idx: AtomicU16,
 }
 
 impl std::fmt::Display for Listener {
@@ -58,7 +59,7 @@ impl Listener {
             gms: OnceLock::new(),
             connections: BorrowRegistry::new("LoginSvr", 16),
             args: args.clone(),
-            verify_links_unique_idx: AtomicU32::new(1),
+            unique_conn_idx: AtomicU16::new(0),
         })
     }
 
