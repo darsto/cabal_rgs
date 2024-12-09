@@ -151,7 +151,7 @@ macro_rules! assert_def_packet_size {
                 use super::*;
                 #[test]
                 fn test() {
-                    let mut buf = [0u8; 4096];
+                    let mut buf = [0u8; 8192];
                     let len = bincode::encode_into_slice($pkt::default(), &mut buf, bincode::config::legacy()).unwrap();
                     assert_eq!(len, $size);
                 }

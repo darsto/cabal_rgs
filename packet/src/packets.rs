@@ -61,6 +61,7 @@ pub enum Packet {
     C2SRequestRsaPubKey,
     C2SAuthAccount,
     C2SVerifyLinks,
+    C2SForceLogin,
 
     // Login Manager
     RequestClientVersion,

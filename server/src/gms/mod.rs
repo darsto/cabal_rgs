@@ -5,11 +5,11 @@ use crate::executor;
 use crate::packet_stream::{IPCPacketStream, Service};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Args;
-use futures::AsyncWriteExt;
 use log::{error, info};
 use packet::pkt_common::ServiceID;
 use packet::*;
 use pkt_common::Connect;
+use pkt_global::CustomIdPacket;
 
 use core::any::TypeId;
 use std::fmt::Display;
@@ -200,7 +200,7 @@ impl Connection {
     }
 
     pub async fn handle_route_packet(&mut self, p: pkt_global::RoutePacket) -> Result<()> {
-        let route_hdr = p.droute_hdr.route_hdr.clone();
+        let route_hdr = &p.droute_hdr.route_hdr;
 
         let Some(conn_ref) = self.listener.connections.refs.iter().find(|conn_ref| {
             let s = &conn_ref.data;
@@ -213,22 +213,6 @@ impl Connection {
             bail!("{self}: Can't find a conn to route to: {route_hdr:?}");
         };
 
-        let mut target_bytes: Vec<u8> = Vec::with_capacity(4096);
-        // reserve the size for header
-        target_bytes.resize(Header::SIZE, 0u8);
-        // serialize payload
-        let target_len = p
-            .serialize_no_hdr(&mut target_bytes)
-            .map_err(|e| anyhow!("{self}: Failed to reencode packet {e}: {p:?}"))?;
-        let target_len = target_len.checked_add(Header::SIZE).unwrap();
-
-        let target_hdr = Header::new(
-            route_hdr.origin_main_cmd,
-            target_len.try_into().unwrap(),
-            true,
-        );
-        target_hdr.serialize(&mut target_bytes[0..Header::SIZE])?;
-
         let mut target_conn = conn_ref
             .borrower
             .request_borrow()
@@ -240,9 +224,10 @@ impl Connection {
             .downcast_mut::<Connection>()
             .unwrap()
             .stream
-            .inner
-            .stream
-            .write_all(&target_bytes[..target_len])
+            .send(&CustomIdPacket {
+                id: route_hdr.origin_main_cmd,
+                data: p,
+            })
             .await
             .map_err(|e| {
                 anyhow!(

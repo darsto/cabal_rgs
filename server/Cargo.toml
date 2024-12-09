@@ -23,7 +23,7 @@ login = []
 
 [dependencies]
 packet = { path = "../packet" }
-async_proc = { git = "https://github.com/darsto/async_proc" }
+async_proc = { path = "/home/dar/proj/async_proc/lib" }
 aria = { git = "https://github.com/darsto/aria.git", branch = "master" }
 borrow_mutex = "0.1.1"
 anyhow = "1.0"
@@ -39,9 +39,3 @@ log = "0.4.20"
 env_logger = "0.10.1"
 rsa = { version = "0.9.7", features = ["sha2"] }
 sha1 = "0.10.6"
-
-[profile.dev.package.num-bigint-dig]
-opt-level = 3
-
-[profile.dev.package.rsa]
-opt-level = 3

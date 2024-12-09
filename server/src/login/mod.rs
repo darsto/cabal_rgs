@@ -8,16 +8,18 @@ use clap::Args;
 use db::GlobalDbHandler;
 use gms::GmsHandler;
 use log::{error, info};
+use packet::{pkt_global, Packet};
 use user::UserConnHandler;
 
 use core::any::TypeId;
 use std::fmt::Display;
-use std::net::TcpStream;
+use std::net::{IpAddr, TcpStream};
 use std::os::fd::{AsFd, AsRawFd};
+use std::sync::atomic::AtomicU32;
 use std::sync::{OnceLock, Weak};
 use std::{net::TcpListener, sync::Arc};
 
-use anyhow::Result;
+use anyhow::{bail, Context, Result};
 use smol::Async;
 
 mod db;
@@ -35,6 +37,7 @@ pub struct Listener {
     gms: OnceLock<Arc<BorrowRef<()>>>,
     connections: BorrowRegistry<u32>,
     args: Arc<crate::args::Config>,
+    pub verify_links_unique_idx: AtomicU32,
 }
 
 impl std::fmt::Display for Listener {
@@ -55,6 +58,7 @@ impl Listener {
             gms: OnceLock::new(),
             connections: BorrowRegistry::new("LoginSvr", 16),
             args: args.clone(),
+            verify_links_unique_idx: AtomicU32::new(1),
         })
     }
 
@@ -112,18 +116,38 @@ impl Listener {
 
     async fn handle_new_conn(
         self: Arc<Listener>,
-        stream: PacketStream<Async<TcpStream>>,
+        mut stream: PacketStream<Async<TcpStream>>,
     ) -> Result<()> {
+        let peer_addr = stream
+            .stream
+            .get_ref()
+            .peer_addr()
+            .context("can't obtain user ip address")?;
+        let IpAddr::V4(ip) = peer_addr.ip() else {
+            bail!("{self}: Not an IPv4 connection");
+        };
+
+        let p = stream.recv().await.unwrap();
+        let Packet::C2SConnect(p) = p else {
+            bail!("{self}: Expected C2SConnect packet, got {p:?}");
+        };
+        let auth_key = p.auth_key;
+
         let conn_ref = self
             .connections
-            .add_borrower(TypeId::of::<UserConnHandler>(), 0)
+            .add_borrower(TypeId::of::<UserConnHandler>(), auth_key)
             .unwrap();
         let conn = Connection {
             conn_ref,
             listener: self.clone(),
             stream,
         };
-        UserConnHandler::new(conn).handle().await
+        let mut handler = UserConnHandler::new(conn, ip, auth_key);
+        let result = handler.handle().await;
+        if result.is_err() {
+            let _ = handler.send_diconnect();
+        }
+        result
     }
 
     async fn connect_to_globaldb(&self) {
@@ -139,7 +163,7 @@ impl Listener {
                 .unwrap();
 
             let conn_ref = BorrowRef::new(TypeId::of::<GlobalDbHandler>(), ());
-            listener.globaldb.set(conn_ref.clone());
+            listener.globaldb.set(conn_ref.clone()).unwrap();
 
             let ret = GlobalDbHandler::new(listener, stream, conn_ref)
                 .handle()
@@ -168,7 +192,7 @@ impl Listener {
             .unwrap();
 
             let conn_ref = BorrowRef::new(TypeId::of::<GmsHandler>(), ());
-            listener.gms.set(conn_ref.clone());
+            listener.gms.set(conn_ref.clone()).unwrap();
 
             let ret = GmsHandler::new(listener, stream, conn_ref).handle().await;
 

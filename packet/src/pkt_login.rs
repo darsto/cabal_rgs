@@ -9,7 +9,7 @@ use crate::{assert_def_packet_size, BoundVec};
 
 #[packet(0x65)]
 pub struct C2SConnect {
-    auth_key: u32
+    auth_key: u32,
 }
 assert_def_packet_size!(C2SConnect, 4);
 
@@ -49,8 +49,8 @@ assert_def_packet_size!(C2SEnvironment, 33);
 #[packet(0x7d2)]
 pub struct S2CEnvironment {
     unk1: Arr<u8, 0x100e>, // zeroes, related to image auth
-    unk2: u16, // 0x14c8? junk?
-    unk3: u8, // 0?
+    unk2: u16,             // 0x14c8? junk?
+    unk3: u8,              // 0?
 }
 assert_def_packet_size!(S2CEnvironment, 4113);
 
@@ -75,22 +75,23 @@ assert_def_packet_size!(C2SAuthAccount, 258);
 
 #[packet(0x67)]
 pub struct S2CAuthAccount {
-    unk1: u8, // 0x20
-    unk2: u32, // 1
-    unk3: [u8; 3], // 01 2f 03
-    unk4: [u8; 8], // zeroes
-    unk5: u32, //  5
-    unk6: u32, // 0x783f81eb
+    status: u8,      // 0x20
+    user_id: u32,     // ?? 1
+    unk2: u8, // 1
+    unk3: u8, // 2f ?? age => when 0, "only users that are age 18 or older can join the server"
+    char_count: u8,
+    unk4: u64, // 0
+    premium_service_type: u32,     //  5
+    premium_expire_time: u32,     // 0x783f81eb
     unk7: u8,
-    unk8: u32,
-    unk9: [u8; 8],
-    unk10: Arr<u8, 33>, // string? always null terminated
-    unk11: u8, // 1
-    unk12: u8, // 3
+    sub_password_exists: u64,
+    language: u32,
+    unkkey: Arr<u8, 33>,     // string? always null terminated
+    characters: BoundVec<0, u8>, // u8 pairs of (server_id, char_id) on successfull login, or [0]
 }
-assert_def_packet_size!(S2CAuthAccount, 72);
+assert_def_packet_size!(S2CAuthAccount, 70);
 
-#[packet(0x67)]
+#[packet(0x79)]
 pub struct S2CServerList {
     servers: BoundVec<1, LoginServerNode>,
 }
@@ -98,6 +99,7 @@ pub struct S2CServerList {
 #[packet(0x80)]
 pub struct S2CUrlList {
     urls_num_bytes: u16,
+    urls_num_bytes2: u16,
     urls: BoundVec<0, BoundVec<4, u8>>,
 }
 
@@ -121,8 +123,13 @@ pub enum SystemMessageType {
 
 #[packet(0x66)]
 pub struct C2SVerifyLinks {
-    unk: BoundVec<0, u8>,
+    unk1: u32, // some key, 0x4350
+    unk2: u16, // 0
+    server_id: u8, // 1
+    group_id: u8, // 1
+    unk3: u32
 }
+assert_def_packet_size!(C2SVerifyLinks, 12);
 
 #[packet(0x66)]
 pub struct S2CVerifyLinks {
@@ -134,9 +141,9 @@ pub struct RequestClientVersion;
 
 #[packet(0x1e)]
 pub struct RequestAuthAccount {
-    server_id: u8, // 0x80?
+    server_id: u8,  // 0x80?
     channel_id: u8, // 1?
-    user_idx: u16, // 0?
+    user_idx: u16,  // 0?
     ip: [u8; 4],
     username: Arr<u8, 33>,
     password: Arr<u8, 97>,
@@ -146,14 +153,14 @@ assert_def_packet_size!(RequestAuthAccount, 139);
 
 #[packet(0x1f)]
 pub struct ResponseAuthAccount {
-    server_id: u8, // 0x80?
+    server_id: u8,  // 0x80?
     channel_id: u8, // 1?
-    user_idx: u16, // 0?
+    user_idx: u16,  // 0?
     ip: [u8; 4],
     username: Arr<u8, 33>,
-    user_num: u32, // 1?
-    login_idx: u8, // 0?
-    result: u8, // 0x20 - ok
+    user_id: u32, // 1?
+    login_idx: u8, // 0? 1 on failure?
+    result: u8,    // 0x20 - ok
     /*
     0x20 - ok
     0x21 - failed
@@ -171,34 +178,34 @@ pub struct ResponseAuthAccount {
     0x2d - antiaddict stuff
     0x2e - antiaddict stuff
      */
-    resident_num: u32, // d0 bf 0b 0 ??
-    unk5: u32, // 0
-    service_type: u32, // 5
-    service_expire_time: u32, // eb 81 3f 78
+    resident_num: u32,          // d0 bf 0b 0 ??
+    unk5: u32,                  // 0
+    premium_service_type: u32,          // 5
+    premium_expire_time: u32,   // eb 81 3f 78
     pcbang_remaining_time: u32, // 0?
     unkkey: Arr<u8, 33>,
-    unk9: u8, // 0
-    pcpoint: u32, // 0
-    unk10: u8, // 1
-    unk11: u8, // 0
-    unk12: u32, // 1
-    unk13: u32, // 0
-    unk14: u32, // 0
-    unk15: u32, // 0
-    unk16: u32, // 0
-    unk17: u8, // 0
-    unk18: Arr<u8, 32>, // 0?
-    unk19: u8, // 0
-    unk20: u32, // 0
-    unk21: u32, // 0
-    unk22: u32, // 0
-    unk23: u32, // 0
-    unk24: u32, // 0
-    unk25: u32, // 0
-    unk26: u32, // 0x18c - login counter??
-    unk27: u16, // 0x301
+    unk9: u8,               // 0
+    pcpoint: u32,           // 0
+    unk10: u8,              // 1
+    unk11: u8,              // 0
+    unk12: u32,             // 1
+    unk13: u32,             // 0
+    unk14: u32,             // 0
+    unk15: u32,             // 0
+    unk16: u32,             // 0
+    unk17: u8,              // 0
+    unk18: Arr<u8, 32>,     // 0?
+    unk19: u8,              // 0
+    unk20: u32,             // 0
+    unk21: u32,             // 0xa5e - some counter
+    unk22: u32,             // 0x477a7190
+    unk23: u32,             // 0
+    unk24: u32,             // 0x477a7190
+    unk25: u32,             // 0
+    unk26: u32,             // 0x18c - another counter
+    characters: BoundVec<0, u8>, // i.e. [1, 3] on successful login (server idx1, character idx3), or [0]
 }
-assert_def_packet_size!(ResponseAuthAccount, 191);
+assert_def_packet_size!(ResponseAuthAccount, 189);
 
 /*
 > @annotate-cfg [clamp = [7, 54]]
@@ -281,3 +288,34 @@ assert_def_packet_size!(ResponseAuthAccount, 191);
 
 
  */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_2() {
+        let buf = [
+            0xE2, 0xB7, 0x4E, 0x00, 0x67, 0x00, 0x20, 0x01, 0x00, 0x00, 0x00, 0x01, 0x2F, 0x01,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x00, 0xEB, 0x81,
+            0x3F, 0x78, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x41, 0x35, 0x31, 0x32, 0x30, 0x36, 0x35, 0x33, 0x41, 0x41, 0x37, 0x33, 0x34,
+            0x36, 0x44, 0x35, 0x38, 0x34, 0x41, 0x46, 0x30, 0x30, 0x36, 0x39, 0x36, 0x44, 0x35,
+            0x36, 0x46, 0x37, 0x31, 0x45, 0x00, 0x01, 0x03,
+        ];
+        let data = S2CAuthAccount::deserialize_no_hdr(&buf[6..]).unwrap();
+        println!("{:?}", data);
+    }
+}
+
+#[packet(0x6d)]
+pub struct C2SForceLogin {
+    do_disconnect: u32, // 0 or 1
+    unk1: u8,           // 1 ?? not processed by loginsvr
+}
+assert_def_packet_size!(C2SForceLogin, 5);
+
+#[packet(0x6d)]
+pub struct S2CForceLogin {
+    unk1: u8, // hardcoded 1
+}

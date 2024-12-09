@@ -194,6 +194,7 @@ impl<T: Unpin + AsyncRead> IPCPacketStream<T> {
         let Packet::Connect(other_id) = p else {
             bail!("Expected Connect packet, got {p:?}");
         };
+        stream.config.other_name = other_id.to_string();
         Ok(Self {
             inner: stream,
             self_id,

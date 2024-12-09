@@ -113,7 +113,7 @@ impl<T, const S: usize> Default for Arr<T, S> {
 impl<T: Copy, const S: usize> From<&[T]> for Arr<T, S> {
     fn from(value: &[T]) -> Self {
         let mut ret = Self::default();
-        ret.0[..value.len()].copy_from_slice(value);
+        ret.0[..usize::min(value.len(), S)].copy_from_slice(value);
         ret
     }
 }
@@ -251,6 +251,12 @@ impl<const S: usize, T> From<Vec<T>> for BoundVec<S, T> {
 impl<const S: usize, T: Clone> From<&[T]> for BoundVec<S, T> {
     fn from(value: &[T]) -> Self {
         Self(value.to_vec())
+    }
+}
+
+impl<const S: usize> From<&str> for BoundVec<S, u8> {
+    fn from(value: &str) -> Self {
+        Self(value.as_bytes().to_vec())
     }
 }
 

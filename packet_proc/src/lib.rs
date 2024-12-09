@@ -38,6 +38,7 @@ pub fn packet(
     let ast = syn::parse_macro_input!(input as syn::DeriveInput);
     let packet_vis = ast.vis;
     let packet_attrs = ast.attrs;
+    let (impl_generics, type_generics, where_clause) = ast.generics.split_for_impl();
     let packet_ident = ast.ident;
 
     // Extract the fields
@@ -55,7 +56,7 @@ pub fn packet(
     let mut ret_stream = quote! {
         #(#packet_attrs)*
         #[derive(std::fmt::Debug, PartialEq, Clone, Default, ::bincode::Encode, ::bincode::Decode)]
-        #packet_vis struct #packet_ident {
+        #packet_vis struct #packet_ident #impl_generics #where_clause {
             #(#fields),*
         }
     };
@@ -66,10 +67,10 @@ pub fn packet(
         };
 
         ret_stream.extend(quote! {
-            impl #packet_ident {
+            impl #packet_ident #type_generics #where_clause {
                 pub const ID: u16 = #id;
             }
-            impl crate::Payload for #packet_ident {
+            impl #impl_generics crate::Payload for #packet_ident #type_generics #where_clause {
                 fn id(&self) -> u16 {
                     Self::ID
                 }
