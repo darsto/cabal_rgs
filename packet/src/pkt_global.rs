@@ -308,7 +308,7 @@ assert_def_packet_size!(VerifyLinks, 424);
 #[packet(0x18)]
 pub struct VerifyLinksResult {
     droute_hdr: DuplexRouteHeader,
-    unk1: u32, // 8?
+    user_idx: u32, // 8?
     status: u8,  // 226?
 }
 assert_def_packet_size!(VerifyLinksResult, 0x21 - Header::SIZE);
@@ -350,7 +350,7 @@ pub struct MultipleLoginDisconnectResponse {
 
 #[packet(0x1c)]
 pub struct SetLoginInstance {
-    unk1: u32,           // 1? user id?
+    user_id: u32,           // 1? user id?
     unk2: u32,           // 0x171 on multiple login? 0x13c on normal login
     unk3: u8,            // hardcoded 0? logged in time in mins?
     unk4: Arr<u8, 33>,   // username? sometimes junk. Always null-terminated

@@ -12,7 +12,9 @@ use anyhow::Result;
 use anyhow::{anyhow, Context};
 use async_proc::select;
 use futures::FutureExt;
+use log::error;
 use log::warn;
+use pkt_login::C2SCheckVersion;
 use pkt_login::C2SVerifyLinks;
 use pkt_login::ResponseAuthAccount;
 use pkt_login::{RequestAuthAccount, S2CVerifyLinks};
@@ -31,13 +33,27 @@ use crate::registry::Entry;
 
 use super::Connection;
 
+struct AuthenticatedUserContext {
+    user_id: u32,
+    unk_user_id: u32,
+    fm_idx: u16,
+    resident_num: u32,
+    premium_service_type: u32,
+    premium_expire_time: u32,
+    /// [`VerifyLinks::unk4`]
+    unk4: u32,
+    unk5: u32,
+    unk6: u32,
+    unk7: u32,
+}
+
 pub struct UserConnHandler {
     pub conn: Connection,
     ip: [u8; 4],
-    auth_key: u32,
+    client_auth_key: u32,
     username: Option<String>,
-    db_auth_resp: Option<ResponseAuthAccount>,
-    user_idx: u16,
+    pub user_idx: u16,
+    auth_ctx: Option<AuthenticatedUserContext>,
 }
 crate::impl_registry_entry!(
     UserConnHandler,
@@ -53,21 +69,16 @@ impl std::fmt::Display for UserConnHandler {
 }
 
 impl UserConnHandler {
-    pub fn new(conn: Connection, ip: Ipv4Addr, auth_key: u32) -> Self {
+    pub fn new(conn: Connection, ip: Ipv4Addr, user_idx: u16, client_auth_key: u32) -> Self {
         let ip = ip.octets();
-
-        let user_idx = conn
-            .listener
-            .unique_conn_idx
-            .fetch_add(1, Ordering::Relaxed);
 
         Self {
             conn,
             ip,
-            auth_key,
+            client_auth_key,
             username: None,
-            db_auth_resp: None,
             user_idx,
+            auth_ctx: None,
         }
     }
 
@@ -81,7 +92,9 @@ impl UserConnHandler {
                 .stream
                 .send(&pkt_login::S2CConnect {
                     xor_seed_2,
-                    auth_key: 0x4663, // rand
+                    auth_key: self.user_idx as u32, // FIXME! THIS MUST BE UNIQUE
+                    // this will be also sent to WorldSvr
+                    // and we might receive it eventually from GMS
                     user_idx: self.user_idx,
                     xor_key_idx,
                 })
@@ -91,28 +104,33 @@ impl UserConnHandler {
 
         {
             let p = self.conn.stream.recv().await.unwrap();
-            let Packet::C2SCheckVersion(c) = p else {
+            let Packet::C2SCheckVersion(p) = p else {
                 bail!("{self}: Expected C2SCheckVersion packet, got {p:?}");
             };
-            if c.client_version != 374 {
-                bail!("{self}: Invalid client version {}", c.client_version);
-            }
-
-            self.conn
-                .stream
-                .send(&pkt_login::S2CCheckVersion {
-                    server_version: c.client_version,
-                    server_magic_key: 0x0059077c,
-                    unk2: 0,
-                    unk3: 0,
-                })
-                .await
-                .unwrap();
+            self.handle_check_version(p).await?;
         }
 
         {
-            let p = self.conn.stream.recv().await.unwrap();
-            // todo: also lend self -> we might get VerifyLinks on GMS connection
+            // Either receive an C2SEnvironment and the rest of user auth packets,
+            // or get kicked by GMS telling us we're already authenticated.
+            // .lend_self() possibly multiple times to allow for spurious borrows
+            let p = loop {
+                select! {
+                    p = self.conn.stream.recv().fuse() => {
+                        let p = p.map_err(|e| {
+                            anyhow!("{self}: Failed to recv a packet: {e}")
+                        })?;
+                        break p
+                    }
+                    _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
+                        self.lend_self().await;
+                        if self.auth_ctx.is_some() {
+                            return self.handle_authenticated().await;
+                        }
+                    }
+                }
+            };
+
             let Packet::C2SEnvironment(c) = p else {
                 bail!("{self}: Expected C2SEnvironment packet, got {p:?}");
             };
@@ -286,7 +304,18 @@ impl UserConnHandler {
             // todo: figure out what else to do
             return Ok(());
         }
-        let auth_resp = self.db_auth_resp.insert(auth_resp);
+        self.auth_ctx = Some(AuthenticatedUserContext {
+            user_id: auth_resp.user_id,
+            unk_user_id: auth_resp.unk26,
+            fm_idx: auth_resp.user_idx,
+            resident_num: auth_resp.resident_num,
+            premium_service_type: auth_resp.premium_service_type,
+            premium_expire_time: auth_resp.premium_expire_time,
+            unk4: auth_resp.unk21,
+            unk5: auth_resp.unk22,
+            unk6: auth_resp.unk23,
+            unk7: auth_resp.unk24,
+        });
 
         let sys_msg = pkt_global::SystemMessage {
             unk2: auth_resp.user_id,
@@ -321,7 +350,6 @@ impl UserConnHandler {
         })
         .await?;
 
-        let auth_resp = self.db_auth_resp.as_ref().unwrap();
         match auth_resp.result {
             0x20 => {
                 self.conn
@@ -366,64 +394,29 @@ impl UserConnHandler {
             _ => unreachable!(),
         }
 
-        // waiting for channel selection now
-        {
-            let p = self.conn.stream.recv().await.unwrap();
-            let Packet::C2SCheckVersion(p) = p else {
-                bail!("{self}: Expected C2SCheckVersion packet, got {p:?}");
-            };
-            if p.client_version != 374 {
-                bail!("{self}: Invalid client version {}", p.client_version);
-            }
+        // Waiting for channel selection now,
+        // then we expect C2SCheckVersion followed by C2SVerifyLinks
+        self.handle_authenticated().await
+    }
 
-            self.conn
-                .stream
-                .send(&pkt_login::S2CCheckVersion {
-                    server_version: p.client_version,
-                    server_magic_key: 0x0059077c,
-                    unk2: 0,
-                    unk3: 0,
-                })
-                .await
-                .unwrap();
+    async fn handle_check_version(&mut self, p: C2SCheckVersion) -> Result<()> {
+        if p.client_version != 374 {
+            bail!("{self}: Invalid client version {}", p.client_version);
         }
 
-        {
-            let p = self.conn.stream.recv().await.unwrap();
-            let Packet::C2SVerifyLinks(p) = p else {
-                bail!("{self}: Expected C2SVerifyLinks packet, got {p:?}");
-            };
-
-            self.handle_verify_links(p).await?;
-        }
-
-        // then we'll get C2SCheckVersion, followed by C2SVerifyLinks.
-        // Then we'll get C2SVerifyLinks whenever the user clicks "Change Server"
-        loop {
-            select! {
-                p = self.conn.stream.recv().fuse() => {
-                    let p = p.map_err(|e| {
-                        anyhow!("{self}: Failed to recv a packet: {e}")
-                    })?;
-                    match p {
-                        _ => {
-                            warn!("{self}: Got unexpected packet: {p:?}");
-                        }
-                    }
-                }
-                _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
-                    self.lend_self().await;
-                }
-            }
-            let p = self.conn.stream.recv().await.unwrap();
-
-            warn!("{self}: Got unexpected packet: {p:?}");
-        }
+        self.conn
+            .stream
+            .send(&pkt_login::S2CCheckVersion {
+                server_version: p.client_version,
+                server_magic_key: 0x0059077c,
+                unk2: 0,
+                unk3: 0,
+            })
+            .await
     }
 
     async fn handle_verify_links(&mut self, p: C2SVerifyLinks) -> Result<()> {
-        let listener = self.conn.listener.clone();
-        let auth_resp = self.db_auth_resp.as_ref().unwrap();
+        let auth_ctx = self.auth_ctx.as_ref().unwrap();
         let verify_links = VerifyLinks {
             droute_hdr: DuplexRouteHeader {
                 route_hdr: RouteHeader {
@@ -435,25 +428,25 @@ impl UserConnHandler {
                 },
                 unique_idx: self.user_idx as u32,
                 to_idx: p.unique_idx,
-                fm_idx: auth_resp.user_idx,
+                fm_idx: auth_ctx.fm_idx,
                 resp_server_id: 128,
                 resp_group_id: 1,
                 resp_world_id: 0,
                 resp_process_id: 0,
             },
             auth_key: p.unk1,
-            user_id: auth_resp.user_id,
-            unk_user_id: auth_resp.unk26,
+            user_id: auth_ctx.user_id,
+            unk_user_id: auth_ctx.unk_user_id,
             user_ip: self.ip,
-            resident_num: auth_resp.resident_num,
+            resident_num: auth_ctx.resident_num,
             unk2: 0,
             unk3: 0,
-            premium_service_type: auth_resp.premium_service_type,
-            premium_expire_time: auth_resp.premium_expire_time,
-            unk4: auth_resp.unk21,
-            unk5: auth_resp.unk22,
-            unk6: auth_resp.unk23,
-            unk7: auth_resp.unk24,
+            premium_service_type: auth_ctx.premium_service_type,
+            premium_expire_time: auth_ctx.premium_expire_time,
+            unk4: auth_ctx.unk4,
+            unk5: auth_ctx.unk5,
+            unk6: auth_ctx.unk6,
+            unk7: auth_ctx.unk7,
             unk8: [0; 3],
             unk9: 1, // ?? seems to be always 1
             unk10: [0; 4],
@@ -462,6 +455,7 @@ impl UserConnHandler {
             username: self.username.as_ref().unwrap().as_bytes().into(),
         };
 
+        let listener = self.conn.listener.clone();
         self.lend_self_until(async {
             let gms = listener.gms.get().unwrap();
             let mut gms = gms.borrow::<GmsHandler>().await.unwrap();
@@ -505,14 +499,68 @@ impl UserConnHandler {
         Ok(())
     }
 
+    pub fn set_authentified(&mut self, p: VerifyLinks) {
+        let Some(username) = CStr::from_bytes_until_nul(&*p.username)
+            .ok()
+            .and_then(|s| s.to_str().ok())
+        else {
+            error!(
+                "{self}: Received malformed username from GMS for user ID {}",
+                p.user_id
+            );
+            return;
+        };
+
+        self.username = Some(username.to_string());
+        self.auth_ctx = Some(AuthenticatedUserContext {
+            user_id: p.user_id,
+            unk_user_id: p.unk_user_id,
+            fm_idx: p.droute_hdr.to_idx,
+            resident_num: p.resident_num,
+            premium_service_type: p.premium_service_type,
+            premium_expire_time: p.premium_expire_time,
+            unk4: p.unk4,
+            unk5: p.unk5,
+            unk6: p.unk6,
+            unk7: p.unk7,
+        });
+    }
+
+    async fn handle_authenticated(&mut self) -> Result<()> {
+        let _ = self.auth_ctx.as_ref().unwrap();
+        loop {
+            select! {
+                p = self.conn.stream.recv().fuse() => {
+                    let p = p.map_err(|e| {
+                        anyhow!("{self}: Failed to recv a packet: {e}")
+                    })?;
+                    match p {
+                        Packet::C2SCheckVersion(p) => {
+                            self.handle_check_version(p).await?;
+                        }
+                        Packet::C2SVerifyLinks(p) => {
+                            self.handle_verify_links(p).await?;
+                        }
+                        _ => {
+                            warn!("{self}: Got unexpected packet: {p:?}");
+                        }
+                    }
+                }
+                _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
+                    self.lend_self().await;
+                }
+            }
+        }
+    }
+
     pub async fn send_diconnect(&self) -> Result<()> {
-        let Some(auth_resp) = self.db_auth_resp.as_ref() else {
+        let Some(auth_ctx) = self.auth_ctx.as_ref() else {
             return Ok(());
         };
 
         let pkt = pkt_global::SetLoginInstance {
-            unk1: auth_resp.user_id,
-            unk2: auth_resp.unk26,
+            user_id: auth_ctx.user_id,
+            unk2: auth_ctx.unk_user_id,
             unk3: 0,
             unk4: Arr::default(),
             unk6: Arr::default(),

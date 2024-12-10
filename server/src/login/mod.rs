@@ -15,7 +15,7 @@ use core::any::TypeId;
 use std::fmt::Display;
 use std::net::{IpAddr, TcpStream};
 use std::os::fd::{AsFd, AsRawFd};
-use std::sync::atomic::AtomicU16;
+use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::{OnceLock, Weak};
 use std::{net::TcpListener, sync::Arc};
 
@@ -37,8 +37,7 @@ pub struct Listener {
     gms: OnceLock<Arc<BorrowRef<()>>>,
     connections: BorrowRegistry<u32>,
     args: Arc<crate::args::Config>,
-    // needed for the existing IPC protocol
-    pub unique_conn_idx: AtomicU16,
+    unique_conn_idx: AtomicU16,
 }
 
 impl std::fmt::Display for Listener {
@@ -57,7 +56,7 @@ impl Listener {
             tcp_listener,
             globaldb: OnceLock::new(),
             gms: OnceLock::new(),
-            connections: BorrowRegistry::new("LoginSvr", 16),
+            connections: BorrowRegistry::new("LoginSvr", 1024),
             args: args.clone(),
             unique_conn_idx: AtomicU16::new(0),
         })
@@ -134,16 +133,19 @@ impl Listener {
         };
         let auth_key = p.auth_key;
 
+        // FIXME! THIS MUST BE UNIQUE
+        let user_idx = self.unique_conn_idx.fetch_add(1, Ordering::Relaxed);
+
         let conn_ref = self
             .connections
-            .add_borrower(TypeId::of::<UserConnHandler>(), auth_key)
+            .add_borrower(TypeId::of::<UserConnHandler>(), user_idx as u32)
             .unwrap();
         let conn = Connection {
             conn_ref,
             listener: self.clone(),
             stream,
         };
-        let mut handler = UserConnHandler::new(conn, ip, auth_key);
+        let mut handler = UserConnHandler::new(conn, ip, user_idx, auth_key);
         let result = handler.handle().await;
         if result.is_err() {
             let _ = handler.send_diconnect();

@@ -9,7 +9,10 @@ use futures::{FutureExt, StreamExt};
 use log::warn;
 use packet::pkt_common::*;
 use packet::*;
-use pkt_global::{LoginServerNode, LoginServerState, NotifyUserCount};
+use pkt_global::{
+    CustomIdPacket, DuplexRouteHeader, LoginServerNode, LoginServerState, NotifyUserCount,
+    RouteHeader, RoutePacket, VerifyLinksResult,
+};
 use smol::{Async, Timer};
 
 use crate::{
@@ -17,7 +20,7 @@ use crate::{
     registry::{BorrowRef, Entry},
 };
 
-use super::Listener;
+use super::{user::UserConnHandler, Listener};
 
 pub struct GmsHandler {
     pub listener: Arc<Listener>,
@@ -97,14 +100,72 @@ impl GmsHandler {
                 // nothing to do
             }
             Packet::VerifyLinks(p) => {
-                let auth_key = p.auth_key; // client key
+                let auth_key = p.auth_key;
+                let Some(user_conn) = self
+                    .listener
+                    .connections
+                    .refs
+                    .iter()
+                    .find(|conn| conn.data == auth_key)
+                else {
+                    warn!("{self}: Can't find user connection {auth_key} for VerifyLinks");
+                    // it could have just dropped
+                    return Ok(());
+                };
 
-                // send server list to appropriate client
-                // send back VerifyLinksResult with:
-                // DuplexRouteHeader:
-                //   resp_process_id=0, resp_world_id=0x16, resp_group_id=1, resp_server_id=0x80, unk3=4
-                // unk1: 4?? 6??
-                // unk2: 1
+                let gms_response_hdr = DuplexRouteHeader {
+                    route_hdr: RouteHeader {
+                        origin_main_cmd: VerifyLinksResult::ID,
+                        server_id: p.droute_hdr.resp_server_id,
+                        group_id: p.droute_hdr.resp_group_id,
+                        world_id: 0xf, // ?? p.droute_hdr.resp_world_id
+                        process_id: p.droute_hdr.resp_process_id,
+                    },
+                    unique_idx: p.droute_hdr.unique_idx,
+                    to_idx: p.droute_hdr.fm_idx,
+                    fm_idx: p.droute_hdr.to_idx,
+                    resp_server_id: p.droute_hdr.route_hdr.server_id,
+                    resp_group_id: p.droute_hdr.route_hdr.group_id,
+                    resp_world_id: 0xc, // ?? p.droute_hdr.route_hdr.world_id,
+                    resp_process_id: p.droute_hdr.route_hdr.process_id,
+                };
+
+                let user_conn = user_conn.clone();
+                let world_servers = self.world_servers.clone();
+                let user_unique_idx = self
+                    .lend_self_until(async {
+                        let mut user_conn = user_conn.borrow::<UserConnHandler>().await.ok()?;
+                        user_conn
+                            .conn
+                            .stream
+                            .send(&pkt_login::S2CServerList {
+                                servers: world_servers.into(),
+                            })
+                            .await
+                            .ok()?;
+                        user_conn.set_authentified(p);
+                        Some(user_conn.user_idx)
+                    })
+                    .await;
+                if user_unique_idx.is_none() {
+                    warn!("{self}: Can't verify user connection {auth_key}");
+                }
+
+                self.stream
+                    .send(&CustomIdPacket {
+                        id: RoutePacket::ID,
+                        data: VerifyLinksResult {
+                            droute_hdr: gms_response_hdr,
+                            user_idx: if let Some(idx) = user_unique_idx {
+                                idx as u32
+                            } else {
+                                0
+                            },
+                            status: if user_unique_idx.is_some() { 1 } else { 0 },
+                        },
+                    })
+                    .await
+                    .unwrap();
             }
             _ => {
                 warn!("{self}: Got unexpected packet: {p:?}");

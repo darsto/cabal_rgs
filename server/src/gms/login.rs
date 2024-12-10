@@ -243,7 +243,7 @@ impl GlobalLoginHandler {
         }
 
         let resp = pkt_global::SetLoginInstance {
-            unk1: p.unk1,
+            user_id: p.unk1,
             unk2: p.unk2,
             unk3: 0,
             unk4: Arr::default(),
