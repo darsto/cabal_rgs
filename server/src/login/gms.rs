@@ -31,7 +31,6 @@ pub struct GmsHandler {
 crate::impl_registry_entry!(
     GmsHandler,
     RefData = (),
-    data = .listener,
     borrow_ref = .conn_ref
 );
 

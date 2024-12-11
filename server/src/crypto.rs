@@ -100,7 +100,6 @@ pub struct Connection {
 crate::impl_registry_entry!(
     Connection,
     RefData = usize,
-    data = .stream,
     borrow_ref = .conn_ref
 );
 

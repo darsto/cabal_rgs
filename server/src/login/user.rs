@@ -58,7 +58,6 @@ pub struct UserConnHandler {
 crate::impl_registry_entry!(
     UserConnHandler,
     RefData = u32,
-    data = .conn,
     borrow_ref = .conn.conn_ref
 );
 

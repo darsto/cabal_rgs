@@ -29,7 +29,6 @@ pub struct GlobalLoginHandler {
 crate::impl_registry_entry!(
     GlobalLoginHandler,
     RefData = pkt_common::Connect,
-    data = .conn,
     borrow_ref = .conn.conn_ref
 );
 

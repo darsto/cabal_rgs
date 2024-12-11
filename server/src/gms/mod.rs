@@ -219,11 +219,27 @@ impl Connection {
             .await
             .map_err(|e| anyhow!("{self}: request_borrow() failed: {e}"))?;
 
-        target_conn
-            .data_mut()
-            .downcast_mut::<Connection>()
-            .unwrap()
-            .stream
+        let target_stream = match conn_ref.data.service {
+            ServiceID::WorldSvr => {
+                &mut target_conn
+                    .as_any_mut()
+                    .downcast_mut::<GlobalWorldHandler>()
+                    .unwrap()
+                    .conn
+                    .stream
+            }
+            ServiceID::LoginSvr => {
+                &mut target_conn
+                    .as_any_mut()
+                    .downcast_mut::<GlobalLoginHandler>()
+                    .unwrap()
+                    .conn
+                    .stream
+            }
+            _ => unreachable!(),
+        };
+
+        target_stream
             .send(&CustomIdPacket {
                 id: route_hdr.origin_main_cmd,
                 data: p,

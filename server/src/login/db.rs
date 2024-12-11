@@ -27,7 +27,6 @@ pub struct GlobalDbHandler {
 crate::impl_registry_entry!(
     GlobalDbHandler,
     RefData = (),
-    data = .listener,
     borrow_ref =.conn_ref
 );
 

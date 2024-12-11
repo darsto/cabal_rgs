@@ -67,14 +67,7 @@ const BORROW_MUTEX_SIZE: usize = 16;
 pub trait Entry: AsAny + Send + std::fmt::Display {
     type RefData;
 
-    /// The type that can be borrowed
-    fn borrower_id() -> TypeId
-    where
-        Self: Sized;
-
     fn borrow_ref(&self) -> &Arc<BorrowRef<Self::RefData>>;
-    fn data(&self) -> &dyn Any;
-    fn data_mut(&mut self) -> &mut dyn Any;
 
     fn lend_self(&mut self) -> impl std::future::Future<Output = ()>
     where
@@ -131,35 +124,9 @@ impl<T: Any> AsAny for T {
 
 #[macro_export]
 macro_rules! impl_registry_entry {
-    ($handler:ty, RefData = $borrow_ref_type:ty, data = $(. $data_name:ident)+, borrow_ref = $(. $borrow_ref_name:ident)+) => {
+    ($handler:ty, RefData = $borrow_ref_type:ty, borrow_ref = $(. $borrow_ref_name:ident)+) => {
         impl $crate::registry::Entry for $handler {
             type RefData = $borrow_ref_type;
-            fn borrower_id() -> ::core::any::TypeId {
-                ::core::any::TypeId::of::<Self>()
-            }
-            fn data(&self) -> &dyn ::core::any::Any {
-                &self $(. $data_name)+ as _
-            }
-            fn data_mut(&mut self) -> &mut dyn ::core::any::Any {
-                &mut self $(. $data_name)+ as _
-            }
-            fn borrow_ref(&self) -> &::std::sync::Arc<crate::registry::BorrowRef<Self::RefData>> {
-                &self $(. $borrow_ref_name)+
-            }
-        }
-    };
-    ($handler:ty, RefData = $borrow_ref_type:ty, data = $(. $data_name:ident)+, borrow_ref = $(. $borrow_ref_name:ident)+) => {
-        impl $crate::registry::Entry for $handler {
-            type RefData = $borrow_ref_type;
-            fn borrower_id() -> ::core::any::TypeId {
-                ::core::any::TypeId::of::<Self>()
-            }
-            fn data(&self) -> &dyn ::core::any::Any {
-                &self $(. $data_name)+ as _
-            }
-            fn data_mut(&mut self) -> &mut dyn ::core::any::Any {
-                &mut self $(. $data_name)+ as _
-            }
             fn borrow_ref(&self) -> &::std::sync::Arc<crate::registry::BorrowRef<Self::RefData>> {
                 &self $(. $borrow_ref_name)+
             }
