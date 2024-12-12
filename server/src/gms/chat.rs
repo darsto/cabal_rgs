@@ -1,36 +1,52 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2024 Darek Stojaczyk
 
+use std::{net::TcpStream, sync::Arc};
+
 use anyhow::{anyhow, bail, Result};
 use async_proc::select;
 use futures::FutureExt;
 use log::warn;
 use packet::pkt_common::ServiceID;
 use packet::*;
+use smol::Async;
 
-use super::Connection;
-use crate::registry::Entry;
+use super::Listener;
+use crate::{
+    packet_stream::IPCPacketStream,
+    registry::{BorrowRef, Entry},
+};
 
 pub struct GlobalChatHandler {
-    pub conn: Connection,
+    pub listener: Arc<Listener>,
+    pub stream: IPCPacketStream<Async<TcpStream>>,
+    pub conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
 }
 crate::impl_registry_entry!(
     GlobalChatHandler,
     RefData = pkt_common::Connect,
-    borrow_ref = .conn.conn_ref
+    borrow_ref = .conn_ref
 );
 
 impl GlobalChatHandler {
-    pub fn new(conn: Connection) -> Self {
-        Self { conn }
+    pub fn new(
+        listener: Arc<Listener>,
+        stream: IPCPacketStream<Async<TcpStream>>,
+        conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
+    ) -> Self {
+        Self {
+            listener,
+            stream,
+            conn_ref,
+        }
     }
 
     pub async fn handle(&mut self) -> Result<()> {
-        let conn_ref = self.conn.conn_ref.clone();
+        let conn_ref = self.conn_ref.clone();
         let service = &conn_ref.data;
 
         #[rustfmt::skip]
-        self.conn.stream
+        self.stream
             .send(&pkt_common::ConnectAck {
                 bytes: BoundVec(vec![
                     0xff, 0xff, 0xff, 0x7f, 0, 0xff, 0, 0xff,
@@ -40,20 +56,20 @@ impl GlobalChatHandler {
             })
             .await.unwrap();
 
-        let p = self.conn.stream.recv().await.unwrap();
+        let p = self.stream.recv().await.unwrap();
         let Packet::RegisterChatSvr(_) = p else {
             bail!("{self}: Expected RegisterChatSvr packet, got {p:?}");
         };
 
         loop {
             select! {
-                p = self.conn.stream.recv().fuse() => {
+                p = self.stream.recv().fuse() => {
                     let p = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")
                     })?;
                     warn!("{self}: Got unexpected packet: {p:?}");
                 }
-                _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
+                _ = self.conn_ref.borrower.wait_to_lend().fuse() => {
                     self.lend_self().await;
                 }
             }
@@ -63,6 +79,6 @@ impl GlobalChatHandler {
 
 impl std::fmt::Display for GlobalChatHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.conn)
+        write!(f, "{}", self)
     }
 }

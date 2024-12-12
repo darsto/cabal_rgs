@@ -55,4 +55,11 @@ impl<T> LockedVec<T> {
     {
         self.inner.read().unwrap().clone()
     }
+
+    pub fn first(&self) -> Option<T>
+    where
+        T: Clone,
+    {
+        self.inner.read().unwrap().first().cloned()
+    }
 }

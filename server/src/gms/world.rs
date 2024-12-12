@@ -2,25 +2,29 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use std::cell::OnceCell;
+use std::net::TcpStream;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 
 use anyhow::anyhow;
 use anyhow::{bail, Result};
 use async_proc::select;
-use futures::{FutureExt, StreamExt};
+use futures::FutureExt;
 use log::{trace, warn};
 use packet::pkt_common::*;
 use packet::pkt_global::*;
 use packet::*;
+use smol::Async;
 
-use crate::async_for_each;
-use crate::gms::login::GlobalLoginHandler;
-use crate::registry::{BorrowRegistry, Entry};
+use crate::packet_stream::IPCPacketStream;
+use crate::registry::{BorrowRef, Entry};
 
-use super::Connection;
+use super::Listener;
 
 pub struct GlobalWorldHandler {
-    pub conn: Connection,
+    pub listener: Arc<Listener>,
+    pub stream: IPCPacketStream<Async<TcpStream>>,
+    pub conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
     ip_port: OnceCell<([u8; 4], u16)>,
     state: u32,
     group_node_unk7: u16,
@@ -29,19 +33,25 @@ pub struct GlobalWorldHandler {
 crate::impl_registry_entry!(
     GlobalWorldHandler,
     RefData = pkt_common::Connect,
-    borrow_ref = .conn.conn_ref
+    borrow_ref = .conn_ref
 );
 
 impl std::fmt::Display for GlobalWorldHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.conn)
+        write!(f, "GlobalWorldHandler")
     }
 }
 
 impl GlobalWorldHandler {
-    pub fn new(conn: Connection) -> Self {
+    pub fn new(
+        listener: Arc<Listener>,
+        stream: IPCPacketStream<Async<TcpStream>>,
+        conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
+    ) -> Self {
         Self {
-            conn,
+            listener,
+            stream,
+            conn_ref,
             state: 5, // unknown
             ip_port: Default::default(),
             group_node_unk7: 0,
@@ -50,11 +60,11 @@ impl GlobalWorldHandler {
     }
 
     pub async fn handle(&mut self) -> Result<()> {
-        let conn_ref = self.conn.conn_ref.clone();
+        let conn_ref = self.conn_ref.clone();
         let service = &conn_ref.data;
 
         #[rustfmt::skip]
-        self.conn.stream
+        self.stream
             .send(&ConnectAck {
                 bytes: BoundVec(vec![
                     0x50, 0, 0, 0, 0, 0, 0, 0,
@@ -64,8 +74,7 @@ impl GlobalWorldHandler {
             })
             .await.unwrap();
 
-        self.conn
-            .stream
+        self.stream
             .send(&ChangeChannelType {
                 server_id: service.world_id,
                 channel_id: service.channel_id,
@@ -77,8 +86,7 @@ impl GlobalWorldHandler {
         let cur_timestamp = std::time::UNIX_EPOCH.elapsed().unwrap().as_secs() as u32;
         let next_daily_reset_time =
             cur_timestamp.next_multiple_of(24 * 3600) - 24 * 3600 + 4 * 3600; /* FIXME: 4h offset is a temporary hack */
-        self.conn
-            .stream
+        self.stream
             .send(&DailyQuestResetTime {
                 next_daily_reset_time,
                 unk2: 0,
@@ -86,15 +94,14 @@ impl GlobalWorldHandler {
             .await
             .unwrap();
 
-        self.conn
-            .stream
+        self.stream
             .send(&AdditionalDungeonInstanceCount { unk1: 0, unk2: 0 })
             .await
             .unwrap();
 
         loop {
             select! {
-                p = self.conn.stream.recv().fuse() => {
+                p = self.stream.recv().fuse() => {
                     let p = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")
                     })?;
@@ -112,7 +119,10 @@ impl GlobalWorldHandler {
                             self.handle_channel_option_sync(p).await.unwrap();
                         }
                         Packet::RoutePacket(p) => {
-                            self.conn.handle_route_packet(p).await.unwrap();
+                            let listener = self.listener.clone();
+                            self.lend_self_until(async {
+                                super::handle_route_packet(&listener, p).await
+                            }).await?;
                         }
                         Packet::SubPasswordCheckRequest(p) => {
                             self.handle_sub_password_check(p).await.unwrap();
@@ -125,7 +135,7 @@ impl GlobalWorldHandler {
                         }
                     }
                 }
-                _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
+                _ = self.conn_ref.borrower.wait_to_lend().fuse() => {
                     self.lend_self().await;
                 }
             }
@@ -135,8 +145,7 @@ impl GlobalWorldHandler {
     async fn handle_profile_path(&mut self, p: ProfilePathRequest) -> Result<()> {
         static COUNTER: AtomicUsize = AtomicUsize::new(0);
         assert_eq!(p.unk1, 0);
-        self.conn
-            .stream
+        self.stream
             .send(&ProfilePathResponse {
                 unk1: 5 + COUNTER.fetch_add(1, Ordering::Relaxed) as u32, // TODO: test with more than 2 channels
                 scp_id1: 4,
@@ -163,11 +172,11 @@ impl GlobalWorldHandler {
         // server. We'll let GlobalLoginHandler do that.
         // In the orignal GMS there should be at most one LoginSvr,
         // but here it doesn't hurt to support more (untested though)
-        let login_srvs = self.conn.listener.login.cloned().into_iter();
+        let login_srvs = self.listener.login.cloned().into_iter();
 
         self.lend_self_until(async {
             for conn_ref in login_srvs {
-                let mut conn = conn_ref.borrow::<GlobalLoginHandler>().await.unwrap();
+                let mut conn = conn_ref.borrow().await.unwrap();
                 conn.notify_user_counts = true;
             }
         })
@@ -182,7 +191,7 @@ impl GlobalWorldHandler {
         let unk7 = self.group_node_unk7;
         self.group_node_unk7 = 0xff00;
         Some(GroupNode {
-            id: self.conn.service().channel_id,
+            id: self.conn_ref.data.channel_id,
             unk0: 0,
             unk1: 0,
             unk2: 0,
@@ -215,8 +224,7 @@ impl GlobalWorldHandler {
         trace!("{self}: {p:?}");
 
         // Never ask for PIN
-        self.conn
-            .stream
+        self.stream
             .send(&SubPasswordCheckResponse {
                 unk1: p.unk1,
                 auth_needed: 0,

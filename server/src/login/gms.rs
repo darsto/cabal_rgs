@@ -20,11 +20,11 @@ use crate::{
     registry::{BorrowRef, Entry},
 };
 
-use super::{user::UserConnHandler, Listener};
+use super::Listener;
 
 pub struct GmsHandler {
     pub listener: Arc<Listener>,
-    pub conn_ref: Arc<BorrowRef<()>>,
+    pub conn_ref: Arc<BorrowRef<Self, ()>>,
     pub stream: IPCPacketStream<Async<TcpStream>>,
     pub world_servers: Vec<LoginServerNode>,
 }
@@ -38,7 +38,7 @@ impl GmsHandler {
     pub fn new(
         listener: Arc<Listener>,
         stream: IPCPacketStream<Async<TcpStream>>,
-        conn_ref: Arc<BorrowRef<()>>,
+        conn_ref: Arc<BorrowRef<Self, ()>>,
     ) -> Self {
         Self {
             listener,
@@ -133,9 +133,8 @@ impl GmsHandler {
                 let world_servers = self.world_servers.clone();
                 let user_unique_idx = self
                     .lend_self_until(async {
-                        let mut user_conn = user_conn.borrow::<UserConnHandler>().await.ok()?;
+                        let mut user_conn = user_conn.borrow().await.ok()?;
                         user_conn
-                            .conn
                             .stream
                             .send(&pkt_login::S2CServerList {
                                 servers: world_servers.into(),

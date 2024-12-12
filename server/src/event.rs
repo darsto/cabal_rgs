@@ -7,7 +7,6 @@ use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Args;
 use log::{error, info, trace};
 
-use std::any::TypeId;
 use std::fmt::Display;
 use std::net::TcpStream;
 use std::os::fd::AsRawFd;
@@ -23,7 +22,7 @@ pub struct EventArgs {}
 pub struct Listener {
     me: Weak<Listener>,
     tcp_listener: Async<TcpListener>,
-    connections: BorrowRegistry<usize>,
+    connections: BorrowRegistry<Connection, usize>,
     _args: Arc<crate::args::Config>,
 }
 
@@ -32,7 +31,7 @@ impl Listener {
         Arc::new_cyclic(|me| Self {
             me: me.clone(),
             tcp_listener,
-            connections: BorrowRegistry::new("EventMgr", 16),
+            connections: BorrowRegistry::new(16),
             _args: args.clone(),
         })
     }
@@ -48,7 +47,7 @@ impl Listener {
 
             let conn_ref = self
                 .connections
-                .add_borrower(TypeId::of::<Connection>(), stream.as_raw_fd() as usize)
+                .add_borrower(stream.as_raw_fd() as usize)
                 .unwrap();
 
             // Give the connection handler its own background task
@@ -83,7 +82,7 @@ impl Listener {
 pub struct Connection {
     pub stream: IPCPacketStream<Async<TcpStream>>,
     pub listener: Arc<Listener>,
-    pub conn_ref: Arc<BorrowRef<usize>>,
+    pub conn_ref: Arc<BorrowRef<Connection, usize>>,
 }
 crate::impl_registry_entry!(
     Connection,

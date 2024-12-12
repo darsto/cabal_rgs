@@ -10,7 +10,6 @@ use log::{debug, error, info, trace};
 use packet::*;
 
 use rand::Rng;
-use std::any::TypeId;
 use std::cell::OnceCell;
 use std::fmt::Display;
 use std::net::TcpStream;
@@ -27,7 +26,7 @@ pub struct CryptoArgs {}
 pub struct Listener {
     me: Weak<Listener>,
     tcp_listener: Async<TcpListener>,
-    connections: BorrowRegistry<usize>,
+    connections: BorrowRegistry<Connection, usize>,
     args: Arc<crate::args::Config>,
 }
 
@@ -36,7 +35,7 @@ impl Listener {
         Arc::new_cyclic(|me| Self {
             me: me.clone(),
             tcp_listener,
-            connections: BorrowRegistry::new("CryptoMgr", 16),
+            connections: BorrowRegistry::new(16),
             args: args.clone(),
         })
     }
@@ -51,7 +50,7 @@ impl Listener {
             let (stream, _) = self.tcp_listener.accept().await?;
             let conn_ref = self
                 .connections
-                .add_borrower(TypeId::of::<Connection>(), stream.as_raw_fd() as usize)
+                .add_borrower(stream.as_raw_fd() as usize)
                 .unwrap();
 
             // Give the connection handler its own background task
@@ -94,7 +93,7 @@ fn xor_blocks_mut(blocks: &mut [Block]) {
 pub struct Connection {
     pub stream: IPCPacketStream<Async<TcpStream>>,
     pub listener: Arc<Listener>,
-    pub conn_ref: Arc<BorrowRef<usize>>,
+    pub conn_ref: Arc<BorrowRef<Connection, usize>>,
     pub shortkey: OnceCell<aria::Key>,
 }
 crate::impl_registry_entry!(

@@ -2,21 +2,20 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use std::ffi::CStr;
-use std::net::IpAddr;
 use std::net::Ipv4Addr;
-use std::sync::atomic::Ordering;
+use std::net::TcpStream;
+use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::anyhow;
 use anyhow::bail;
 use anyhow::Result;
-use anyhow::{anyhow, Context};
 use async_proc::select;
 use futures::FutureExt;
 use log::error;
 use log::warn;
 use pkt_login::C2SCheckVersion;
 use pkt_login::C2SVerifyLinks;
-use pkt_login::ResponseAuthAccount;
 use pkt_login::{RequestAuthAccount, S2CVerifyLinks};
 use rsa::pkcs1::EncodeRsaPublicKey;
 use rsa::Oaep;
@@ -25,13 +24,14 @@ use rsa::{RsaPrivateKey, RsaPublicKey};
 use packet::pkt_global::*;
 use packet::*;
 use sha1::Sha1;
+use smol::Async;
 use smol::Timer;
 
-use crate::login::db::GlobalDbHandler;
-use crate::login::gms::GmsHandler;
+use crate::packet_stream::PacketStream;
+use crate::registry::BorrowRef;
 use crate::registry::Entry;
 
-use super::Connection;
+use super::Listener;
 
 struct AuthenticatedUserContext {
     user_id: u32,
@@ -48,8 +48,11 @@ struct AuthenticatedUserContext {
 }
 
 pub struct UserConnHandler {
-    pub conn: Connection,
+    pub conn_ref: Arc<BorrowRef<UserConnHandler, u32>>,
+    pub listener: Arc<Listener>,
+    pub stream: PacketStream<Async<TcpStream>>,
     ip: [u8; 4],
+    #[allow(dead_code)]
     client_auth_key: u32,
     username: Option<String>,
     pub user_idx: u16,
@@ -58,21 +61,30 @@ pub struct UserConnHandler {
 crate::impl_registry_entry!(
     UserConnHandler,
     RefData = u32,
-    borrow_ref = .conn.conn_ref
+    borrow_ref = .conn_ref
 );
 
 impl std::fmt::Display for UserConnHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.conn)
+        write!(f, "UserConnHandler")
     }
 }
 
 impl UserConnHandler {
-    pub fn new(conn: Connection, ip: Ipv4Addr, user_idx: u16, client_auth_key: u32) -> Self {
+    pub fn new(
+        listener: Arc<Listener>,
+        stream: PacketStream<Async<TcpStream>>,
+        conn_ref: Arc<BorrowRef<Self, u32>>,
+        ip: Ipv4Addr,
+        user_idx: u16,
+        client_auth_key: u32,
+    ) -> Self {
         let ip = ip.octets();
 
         Self {
-            conn,
+            listener,
+            stream,
+            conn_ref,
             ip,
             client_auth_key,
             username: None,
@@ -83,12 +95,11 @@ impl UserConnHandler {
 
     pub async fn handle(&mut self) -> Result<()> {
         {
-            let decoder = self.conn.stream.decoder.as_ref().unwrap();
+            let decoder = self.stream.decoder.as_ref().unwrap();
             let xor_seed_2 = decoder.xor_table_seed;
             let xor_key_idx = decoder.xor_key_idx;
 
-            self.conn
-                .stream
+            self.stream
                 .send(&pkt_login::S2CConnect {
                     xor_seed_2,
                     auth_key: self.user_idx as u32, // FIXME! THIS MUST BE UNIQUE
@@ -102,7 +113,7 @@ impl UserConnHandler {
         }
 
         {
-            let p = self.conn.stream.recv().await.unwrap();
+            let p = self.stream.recv().await.unwrap();
             let Packet::C2SCheckVersion(p) = p else {
                 bail!("{self}: Expected C2SCheckVersion packet, got {p:?}");
             };
@@ -115,13 +126,13 @@ impl UserConnHandler {
             // .lend_self() possibly multiple times to allow for spurious borrows
             let p = loop {
                 select! {
-                    p = self.conn.stream.recv().fuse() => {
+                    p = self.stream.recv().fuse() => {
                         let p = p.map_err(|e| {
                             anyhow!("{self}: Failed to recv a packet: {e}")
                         })?;
                         break p
                     }
-                    _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
+                    _ = self.conn_ref.borrower.wait_to_lend().fuse() => {
                         self.lend_self().await;
                         if self.auth_ctx.is_some() {
                             return self.handle_authenticated().await;
@@ -141,8 +152,7 @@ impl UserConnHandler {
             self.username = Some(name.into());
             println!("{self}: username={}", name);
 
-            self.conn
-                .stream
+            self.stream
                 .send(&pkt_login::S2CEnvironment {
                     unk1: Default::default(),
                     unk2: 0x14c8,
@@ -153,7 +163,7 @@ impl UserConnHandler {
         }
 
         let auth_resp = {
-            let p = self.conn.stream.recv().await.unwrap();
+            let p = self.stream.recv().await.unwrap();
             let Packet::C2SRequestRsaPubKey(_) = p else {
                 bail!("{self}: Expected C2SRequestRsaPubKey packet, got {p:?}");
             };
@@ -162,8 +172,7 @@ impl UserConnHandler {
             let pub_key = RsaPublicKey::from(&priv_key);
             let pub_key = pub_key.to_pkcs1_der().unwrap().into_vec();
 
-            self.conn
-                .stream
+            self.stream
                 .send(&pkt_login::S2CRsaPubKey {
                     unk1: 1,
                     pub_key_num_bytes: pub_key.len().try_into().unwrap(),
@@ -172,7 +181,7 @@ impl UserConnHandler {
                 .await
                 .unwrap();
 
-            let p = self.conn.stream.recv().await.unwrap();
+            let p = self.stream.recv().await.unwrap();
             let Packet::C2SAuthAccount(a) = p else {
                 bail!("{self}: Expected C2SRequestRsaPubKey packet, got {p:?}");
             };
@@ -201,11 +210,11 @@ impl UserConnHandler {
 
             println!("username = {username}; password = {password}");
 
-            let listener = self.conn.listener.clone();
+            let listener = self.listener.clone();
             let conn_unique_idx = self.user_idx;
             self.lend_self_until(async {
-                let globaldb = listener.globaldb.get().unwrap();
-                let mut globaldb = globaldb.borrow::<GlobalDbHandler>().await.unwrap();
+                let globaldb = listener.globaldb.first().unwrap();
+                let mut globaldb = globaldb.borrow().await.unwrap();
 
                 globaldb
                     .stream
@@ -237,18 +246,17 @@ impl UserConnHandler {
         {
             if auth_resp.result == 0x20 {
                 // todo enum
-                let listener = self.conn.listener.clone();
+                let listener = self.listener.clone();
                 let world_servers = self
                     .lend_self_until(async {
-                        let gms = listener.gms.get().unwrap();
-                        let gms = gms.borrow::<GmsHandler>().await.unwrap();
+                        let gms = listener.gms.first().unwrap();
+                        let gms = gms.borrow().await.unwrap();
 
                         gms.world_servers.clone()
                     })
                     .await;
 
-                self.conn
-                    .stream
+                self.stream
                     .send(&pkt_login::S2CServerList {
                         servers: world_servers.into(),
                     })
@@ -268,7 +276,7 @@ impl UserConnHandler {
                 url_list.urls_num_bytes2 = len.try_into().unwrap();
                 url_list.urls_num_bytes = url_list.urls_num_bytes2.checked_sub(2).unwrap();
 
-                self.conn.stream.send(&url_list).await.unwrap();
+                self.stream.send(&url_list).await.unwrap();
             }
 
             let s2c_auth = if auth_resp.result == 0x20 {
@@ -296,7 +304,7 @@ impl UserConnHandler {
                 }
             };
 
-            self.conn.stream.send(&s2c_auth).await.unwrap();
+            self.stream.send(&s2c_auth).await.unwrap();
         }
 
         if auth_resp.result != 0x20 && auth_resp.result != 0x22 {
@@ -321,10 +329,10 @@ impl UserConnHandler {
             msg_type: if auth_resp.result == 0x20 { 9 } else { 1 },
             ..Default::default()
         };
-        let listener = self.conn.listener.clone();
+        let listener = self.listener.clone();
         self.lend_self_until(async {
-            let gms = listener.gms.get().unwrap();
-            let mut gms = gms.borrow::<GmsHandler>().await.unwrap();
+            let gms = listener.gms.first().unwrap();
+            let mut gms = gms.borrow().await.unwrap();
 
             gms.stream.send(&sys_msg).await.unwrap();
 
@@ -351,8 +359,7 @@ impl UserConnHandler {
 
         match auth_resp.result {
             0x20 => {
-                self.conn
-                    .stream
+                self.stream
                     .send(&pkt_login::S2CSystemMessage {
                         msg_type: 9,
                         data1: 0,
@@ -362,7 +369,7 @@ impl UserConnHandler {
                     .unwrap();
             }
             0x22 => {
-                let p = self.conn.stream.recv().await.unwrap();
+                let p = self.stream.recv().await.unwrap();
                 let Packet::C2SForceLogin(p) = p else {
                     bail!("{self}: Expected C2SForceLogin packet, got {p:?}");
                 };
@@ -371,21 +378,20 @@ impl UserConnHandler {
                     return Ok(());
                 }
 
-                let listener = self.conn.listener.clone();
+                let listener = self.listener.clone();
                 let gms_pkt = pkt_global::MultipleLoginDisconnectRequest {
                     unk1: auth_resp.user_id,
                     unk2: auth_resp.unk26,
                 };
                 self.lend_self_until(async {
-                    let gms = listener.gms.get().unwrap();
-                    let mut gms = gms.borrow::<GmsHandler>().await.unwrap();
+                    let gms = listener.gms.first().unwrap();
+                    let mut gms = gms.borrow().await.unwrap();
 
                     gms.stream.send(&gms_pkt).await.unwrap();
                 })
                 .await;
 
-                self.conn
-                    .stream
+                self.stream
                     .send(&pkt_login::S2CForceLogin { unk1: 1 })
                     .await
                     .unwrap();
@@ -403,8 +409,7 @@ impl UserConnHandler {
             bail!("{self}: Invalid client version {}", p.client_version);
         }
 
-        self.conn
-            .stream
+        self.stream
             .send(&pkt_login::S2CCheckVersion {
                 server_version: p.client_version,
                 server_magic_key: 0x0059077c,
@@ -454,10 +459,10 @@ impl UserConnHandler {
             username: self.username.as_ref().unwrap().as_bytes().into(),
         };
 
-        let listener = self.conn.listener.clone();
+        let listener = self.listener.clone();
         self.lend_self_until(async {
-            let gms = listener.gms.get().unwrap();
-            let mut gms = gms.borrow::<GmsHandler>().await.unwrap();
+            let gms = listener.gms.first().unwrap();
+            let mut gms = gms.borrow().await.unwrap();
 
             gms.stream
                 .send(&CustomIdPacket {
@@ -488,8 +493,7 @@ impl UserConnHandler {
         })
         .await?;
 
-        self.conn
-            .stream
+        self.stream
             .send(&S2CVerifyLinks {
                 unk: vec![1, 1, 1].into(),
             })
@@ -529,7 +533,7 @@ impl UserConnHandler {
         let _ = self.auth_ctx.as_ref().unwrap();
         loop {
             select! {
-                p = self.conn.stream.recv().fuse() => {
+                p = self.stream.recv().fuse() => {
                     let p = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")
                     })?;
@@ -545,7 +549,7 @@ impl UserConnHandler {
                         }
                     }
                 }
-                _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
+                _ = self.conn_ref.borrower.wait_to_lend().fuse() => {
                     self.lend_self().await;
                 }
             }
@@ -568,8 +572,8 @@ impl UserConnHandler {
             unk9: Arr::default(),
         };
 
-        let gms = self.conn.listener.gms.get().unwrap();
-        let mut gms = gms.borrow::<GmsHandler>().await.unwrap();
+        let gms = self.listener.gms.first().unwrap();
+        let mut gms = gms.borrow().await.unwrap();
 
         gms.stream.send(&pkt).await
     }

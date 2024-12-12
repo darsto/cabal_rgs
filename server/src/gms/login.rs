@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2024 Darek Stojaczyk
 
+use std::net::TcpStream;
+use std::sync::Arc;
+
 use anyhow::anyhow;
 use anyhow::Result;
 use async_proc::select;
 use futures::FutureExt;
-use futures::StreamExt;
 use log::debug;
 use log::error;
 use log::info;
@@ -13,45 +15,52 @@ use log::warn;
 use packet::pkt_common::*;
 use packet::pkt_global::*;
 use packet::*;
+use smol::Async;
 
-use crate::async_for_each;
-use crate::gms::world::GlobalWorldHandler;
-use crate::gms::GlobalDbHandler;
-use crate::registry::BorrowRegistry;
+use crate::packet_stream::IPCPacketStream;
+use crate::registry::BorrowRef;
 use crate::registry::Entry;
 
-use super::Connection;
+use super::Listener;
 
 pub struct GlobalLoginHandler {
-    pub conn: Connection,
+    pub listener: Arc<Listener>,
+    pub stream: IPCPacketStream<Async<TcpStream>>,
+    pub conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
     pub notify_user_counts: bool,
 }
 crate::impl_registry_entry!(
     GlobalLoginHandler,
     RefData = pkt_common::Connect,
-    borrow_ref = .conn.conn_ref
+    borrow_ref = .conn_ref
 );
 
 impl std::fmt::Display for GlobalLoginHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.conn)
+        write!(f, "GlobalLoginHandler")
     }
 }
 
 impl GlobalLoginHandler {
-    pub fn new(conn: Connection) -> Self {
+    pub fn new(
+        listener: Arc<Listener>,
+        stream: IPCPacketStream<Async<TcpStream>>,
+        conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
+    ) -> Self {
         Self {
-            conn,
+            listener,
+            stream,
+            conn_ref,
             notify_user_counts: false,
         }
     }
 
     pub async fn handle(&mut self) -> Result<()> {
-        let conn_ref = self.conn.conn_ref.clone();
+        let conn_ref = self.conn_ref.clone();
         let service = &conn_ref.data;
 
         #[rustfmt::skip]
-        self.conn.stream
+        self.stream
             .send(&pkt_common::ConnectAck {
                 bytes: BoundVec(vec![
                     0xfa, 0, 0, 0, 0, 0, 0, 0,
@@ -61,8 +70,7 @@ impl GlobalLoginHandler {
             })
             .await.unwrap();
 
-        self.conn
-            .stream
+        self.stream
             .send(&ChangeServerState {
                 server_id: service.world_id,
                 channel_id: service.channel_id,
@@ -73,7 +81,7 @@ impl GlobalLoginHandler {
 
         loop {
             select! {
-                p = self.conn.stream.recv().fuse() => {
+                p = self.stream.recv().fuse() => {
                     let p = p.map_err(|e| {
                         anyhow!("{self}: Failed to recv a packet: {e}")
                     })?;
@@ -88,7 +96,10 @@ impl GlobalLoginHandler {
                             self.handle_system_message(p).await.unwrap();
                         }
                         Packet::RoutePacket(p) => {
-                            self.conn.handle_route_packet(p).await.unwrap();
+                            let listener = self.listener.clone();
+                            self.lend_self_until(async {
+                                super::handle_route_packet(&listener, p).await
+                            }).await?;
                         }
                         Packet::SetLoginInstance(p) => {
                             self.handle_login_stt(p).await.unwrap();
@@ -101,7 +112,7 @@ impl GlobalLoginHandler {
                         }
                     }
                 }
-                _ = self.conn.conn_ref.borrower.wait_to_lend().fuse() => {
+                _ = self.conn_ref.borrower.wait_to_lend().fuse() => {
                     self.lend_self().await;
                 }
             }
@@ -118,8 +129,8 @@ impl GlobalLoginHandler {
         // TODO: group those into game servers; for now we assume only 1 server
         let mut groups = Vec::new();
 
-        for conn_ref in self.conn.listener.worlds.cloned().into_iter() {
-            let mut conn = conn_ref.borrow::<GlobalWorldHandler>().await.unwrap();
+        for conn_ref in self.listener.worlds.cloned().into_iter() {
+            let mut conn = conn_ref.borrow().await.unwrap();
             if let Some(group) = conn.group_node() {
                 groups.push(group);
             }
@@ -132,13 +143,10 @@ impl GlobalLoginHandler {
             groups: groups.clone().into(),
         };
 
-        for conn_ref in self.conn.listener.worlds.cloned().into_iter() {
-            let mut conn = conn_ref.borrow::<GlobalWorldHandler>().await.unwrap();
-            if let Err(e) = conn.conn.stream.send(&world_srv_state).await {
-                error!(
-                    "{self}: Failed to send WorldServerState to {}: {e}",
-                    conn.conn
-                );
+        for conn_ref in self.listener.worlds.cloned().into_iter() {
+            let mut conn = conn_ref.borrow().await.unwrap();
+            if let Err(e) = conn.stream.send(&world_srv_state).await {
+                error!("{self}: Failed to send WorldServerState to {}: {e}", &*conn);
             }
         }
 
@@ -162,7 +170,6 @@ impl GlobalLoginHandler {
         */
 
         if let Err(e) = self
-            .conn
             .stream
             .send(&LoginServerState {
                 servers: servers.into(),
@@ -179,30 +186,24 @@ impl GlobalLoginHandler {
     pub async fn handle_system_message(&mut self, p: SystemMessage) -> Result<()> {
         let resp = SystemMessageForwarded { data: p };
 
-        for conn_ref in self.conn.listener.worlds.cloned().into_iter() {
-            let mut conn = conn_ref.borrow::<GlobalWorldHandler>().await.unwrap();
-            if let Err(e) = conn.conn.stream.send(&resp).await {
-                error!(
-                    "{self}: Failed to forward SystemMessage to {}: {e}",
-                    conn.conn
-                );
+        for conn_ref in self.listener.worlds.cloned().into_iter() {
+            let mut conn = conn_ref.borrow().await.unwrap();
+            if let Err(e) = conn.stream.send(&resp).await {
+                error!("{self}: Failed to forward SystemMessage to {}: {e}", &*conn);
             }
         }
 
-        self.conn.stream.send(&resp).await.unwrap();
+        self.stream.send(&resp).await.unwrap();
         Ok(())
     }
 
     pub async fn handle_login_stt(&mut self, p: SetLoginInstance) -> Result<()> {
         debug!("{self}: New login! {p:?}");
 
-        for conn_ref in self.conn.listener.db.cloned().into_iter() {
-            let mut conn = conn_ref.borrow::<GlobalDbHandler>().await.unwrap();
-            if let Err(e) = conn.conn.stream.send(&p).await {
-                error!(
-                    "{self}: Failed to send SetLoginInstance to {}: {e}",
-                    conn.conn
-                );
+        for conn_ref in self.listener.db.cloned().into_iter() {
+            let mut conn = conn_ref.borrow().await.unwrap();
+            if let Err(e) = conn.stream.send(&p).await {
+                error!("{self}: Failed to send SetLoginInstance to {}: {e}", &*conn);
             }
         }
 
@@ -217,17 +218,17 @@ impl GlobalLoginHandler {
             unk1: p.unk1,
             unk2: p.unk2,
         };
-        for conn_ref in self.conn.listener.worlds.cloned().into_iter() {
-            let mut conn = conn_ref.borrow::<GlobalWorldHandler>().await.unwrap();
-            if let Err(e) = conn.conn.stream.send(&resp).await {
+        for conn_ref in self.listener.worlds.cloned().into_iter() {
+            let mut conn = conn_ref.borrow().await.unwrap();
+            if let Err(e) = conn.stream.send(&resp).await {
                 error!(
                     "{self}: Failed to send MultipleLoginDisconnectResponse to {}: {e}",
-                    conn.conn
+                    &*conn
                 );
             }
         }
 
-        if let Err(e) = self.conn.stream.send(&resp).await {
+        if let Err(e) = self.stream.send(&resp).await {
             error!("{self}: Failed to send MultipleLoginDisconnectResponse to Self: {e}");
         }
 
@@ -242,12 +243,12 @@ impl GlobalLoginHandler {
             unk9: Arr::default(),
         };
 
-        for conn_ref in self.conn.listener.db.cloned().into_iter() {
-            let mut conn = conn_ref.borrow::<GlobalDbHandler>().await.unwrap();
-            if let Err(e) = conn.conn.stream.send(&resp).await {
+        for conn_ref in self.listener.db.cloned().into_iter() {
+            let mut conn = conn_ref.borrow().await.unwrap();
+            if let Err(e) = conn.stream.send(&resp).await {
                 error!(
                     "{self}: Failed to send MultipleLoginDisconnectResponse to {}: {e}",
-                    conn.conn
+                    &*conn
                 );
             }
         }

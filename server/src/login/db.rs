@@ -21,8 +21,8 @@ use super::Listener;
 
 pub struct GlobalDbHandler {
     pub listener: Arc<Listener>,
-    pub conn_ref: Arc<BorrowRef<()>>,
     pub stream: IPCPacketStream<Async<TcpStream>>,
+    pub conn_ref: Arc<BorrowRef<Self, ()>>,
 }
 crate::impl_registry_entry!(
     GlobalDbHandler,
@@ -34,7 +34,7 @@ impl GlobalDbHandler {
     pub fn new(
         listener: Arc<Listener>,
         stream: IPCPacketStream<Async<TcpStream>>,
-        conn_ref: Arc<BorrowRef<()>>,
+        conn_ref: Arc<BorrowRef<Self, ()>>,
     ) -> Self {
         Self {
             listener,

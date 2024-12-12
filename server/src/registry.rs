@@ -4,82 +4,43 @@
 use crate::atomic_append_vec::AtomicAppendVec;
 use borrow_mutex::{BorrowGuardArmed, BorrowMutex};
 use futures::FutureExt;
-use futures::Stream;
 
-use core::any::Any;
-use std::any::TypeId;
 use std::sync::Arc;
 
-pub struct BorrowRegistry<T> {
-    pub name: String,
-    pub refs: AtomicAppendVec<Arc<BorrowRef<T>>>,
+pub struct BorrowRegistry<T, R> {
+    pub refs: AtomicAppendVec<Arc<BorrowRef<T, R>>>,
 }
 
-impl<T> BorrowRegistry<T> {
-    pub fn new(name: impl Into<String>, max_connections: usize) -> Self {
+impl<T, R> BorrowRegistry<T, R> {
+    pub fn new(max_connections: usize) -> Self {
         Self {
-            name: name.into(),
             refs: AtomicAppendVec::with_capacity(max_connections),
         }
     }
 
-    pub fn add_borrower(&self, type_id: TypeId, data: T) -> Option<Arc<BorrowRef<T>>> {
-        let conn_ref = BorrowRef::new(type_id, data);
+    pub fn add_borrower(&self, data: R) -> Option<Arc<BorrowRef<T, R>>> {
+        let conn_ref = BorrowRef::new(data);
         self.refs.push(conn_ref.clone()).ok()?;
         Some(conn_ref)
-    }
-
-    pub fn borrow_multiple<'a, H>(
-        refs: impl IntoIterator<Item = &'a (impl AsRef<BorrowRef<T>> + 'a)>,
-    ) -> impl Stream<Item = BorrowGuardArmed<'a, H>>
-    where
-        H: Entry,
-        T: 'static,
-    {
-        futures::stream::unfold(refs.into_iter(), move |mut iter| async {
-            while let Some(next) = iter.next() {
-                if next.as_ref().type_id != TypeId::of::<H>() {
-                    continue;
-                }
-                if let Ok(handler) = next.as_ref().borrower.request_borrow().await {
-                    return Some((
-                        BorrowGuardArmed::map(handler, |handler| {
-                            handler.as_any_mut().downcast_mut::<H>().unwrap()
-                        }),
-                        iter,
-                    ));
-                }
-            }
-            None
-        })
-    }
-}
-
-impl<T> std::fmt::Display for BorrowRegistry<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.name)
     }
 }
 
 const BORROW_MUTEX_SIZE: usize = 16;
 
 #[allow(dead_code)]
-pub trait Entry: AsAny + Send + std::fmt::Display {
+pub trait Entry: Send + std::fmt::Display {
     type RefData;
 
-    fn borrow_ref(&self) -> &Arc<BorrowRef<Self::RefData>>;
+    fn borrow_ref(&self) -> &Arc<BorrowRef<Self, Self::RefData>>
+    where
+        Self: Sized;
 
     fn lend_self(&mut self) -> impl std::future::Future<Output = ()>
     where
         Self: Sized,
     {
         async {
-            self.borrow_ref()
-                .clone()
-                .borrower
-                .lend(self as &mut dyn Entry<RefData = Self::RefData>)
-                .unwrap()
-                .await;
+            self.borrow_ref().clone().borrower.lend(self).unwrap().await;
         }
     }
 
@@ -99,26 +60,11 @@ pub trait Entry: AsAny + Send + std::fmt::Display {
                         return ret;
                     }
                     _ = conn_ref.borrower.wait_to_lend().fuse() => {
-                        conn_ref.borrower.lend(self as &mut dyn Entry<RefData = Self::RefData>).unwrap().await;
+                        conn_ref.borrower.lend(self).unwrap().await;
                     }
                 }
             }
         }
-    }
-}
-
-#[allow(dead_code)]
-pub trait AsAny: Any {
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-}
-
-impl<T: Any> AsAny for T {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -127,7 +73,7 @@ macro_rules! impl_registry_entry {
     ($handler:ty, RefData = $borrow_ref_type:ty, borrow_ref = $(. $borrow_ref_name:ident)+) => {
         impl $crate::registry::Entry for $handler {
             type RefData = $borrow_ref_type;
-            fn borrow_ref(&self) -> &::std::sync::Arc<crate::registry::BorrowRef<Self::RefData>> {
+            fn borrow_ref(&self) -> &::std::sync::Arc<crate::registry::BorrowRef<Self, Self::RefData>> {
                 &self $(. $borrow_ref_name)+
             }
         }
@@ -135,39 +81,22 @@ macro_rules! impl_registry_entry {
 }
 
 #[derive(Debug)]
-pub struct BorrowRef<T> {
-    /// The type that can be borrowed
-    pub type_id: TypeId,
+pub struct BorrowRef<T, R> {
     /// An opaque unique identifier. This can be used to identify
     /// the connection without borrowing, and serves no other purpose.
-    pub data: T,
-    pub borrower: BorrowMutex<BORROW_MUTEX_SIZE, dyn Entry<RefData = T>>,
+    pub data: R,
+    pub borrower: BorrowMutex<BORROW_MUTEX_SIZE, T>,
 }
 
-impl<T> BorrowRef<T> {
-    pub fn new(type_id: TypeId, data: T) -> Arc<BorrowRef<T>> {
+impl<T, R> BorrowRef<T, R> {
+    pub fn new(data: R) -> Arc<BorrowRef<T, R>> {
         Arc::new(BorrowRef {
-            type_id,
             data,
             borrower: BorrowMutex::new(),
         })
     }
 
-    pub async fn borrow<'a, H: Entry>(&'a self) -> Result<BorrowGuardArmed<'a, H>, ()>
-    where
-        T: 'static,
-    {
-        if self.type_id != TypeId::of::<H>() {
-            return Err(());
-        }
-        self.borrower
-            .request_borrow()
-            .await
-            .map(|entry| {
-                BorrowGuardArmed::map(entry, |entry| {
-                    entry.as_any_mut().downcast_mut::<H>().unwrap()
-                })
-            })
-            .map_err(|_| ())
+    pub async fn borrow(&self) -> Result<BorrowGuardArmed<'_, T>, borrow_mutex::Error> {
+        self.borrower.request_borrow().await
     }
 }
