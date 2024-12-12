@@ -135,7 +135,7 @@ impl Listener {
         // FIXME! THIS MUST BE UNIQUE
         let user_idx = self.unique_conn_idx.fetch_add(1, Ordering::Relaxed);
 
-        let conn_ref = self.connections.add_borrower(user_idx as u32).unwrap();
+        let conn_ref = self.connections.register(user_idx as u32).unwrap();
         let mut handler =
             UserConnHandler::new(self.clone(), stream, conn_ref, ip, user_idx, auth_key);
         let result = handler.handle().await;

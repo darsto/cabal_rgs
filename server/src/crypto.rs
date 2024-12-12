@@ -50,7 +50,7 @@ impl Listener {
             let (stream, _) = self.tcp_listener.accept().await?;
             let conn_ref = self
                 .connections
-                .add_borrower(stream.as_raw_fd() as usize)
+                .register(stream.as_raw_fd() as usize)
                 .unwrap();
 
             // Give the connection handler its own background task

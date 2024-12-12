@@ -100,12 +100,8 @@ impl GmsHandler {
             }
             Packet::VerifyLinks(p) => {
                 let auth_key = p.auth_key;
-                let Some(user_conn) = self
-                    .listener
-                    .connections
-                    .refs
-                    .iter()
-                    .find(|conn| conn.data == auth_key)
+                let Some(user_conn) = self.listener.connections.refs.get(auth_key as _)
+                // TODO
                 else {
                     warn!("{self}: Can't find user connection {auth_key} for VerifyLinks");
                     // it could have just dropped

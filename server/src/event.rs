@@ -47,7 +47,7 @@ impl Listener {
 
             let conn_ref = self
                 .connections
-                .add_borrower(stream.as_raw_fd() as usize)
+                .register(stream.as_raw_fd() as usize)
                 .unwrap();
 
             // Give the connection handler its own background task

@@ -1,27 +1,37 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2024 Darek Stojaczyk
 
-use crate::atomic_append_vec::AtomicAppendVec;
 use borrow_mutex::{BorrowGuardArmed, BorrowMutex};
 use futures::FutureExt;
 
 use std::sync::Arc;
 
+use crate::arc_slab::ArcSlab;
+
 pub struct BorrowRegistry<T, R> {
-    pub refs: AtomicAppendVec<Arc<BorrowRef<T, R>>>,
+    pub refs: ArcSlab<BorrowRef<T, R>>,
 }
 
 impl<T, R> BorrowRegistry<T, R> {
     pub fn new(max_connections: usize) -> Self {
         Self {
-            refs: AtomicAppendVec::with_capacity(max_connections),
+            refs: ArcSlab::with_capacity(max_connections as u16),
         }
     }
 
-    pub fn add_borrower(&self, data: R) -> Option<Arc<BorrowRef<T, R>>> {
-        let conn_ref = BorrowRef::new(data);
-        self.refs.push(conn_ref.clone()).ok()?;
-        Some(conn_ref)
+    pub fn register(&self, data: R) -> Option<Arc<BorrowRef<T, R>>> {
+        let idx = self.refs.reserve_index()?;
+        let borrow_ref = Arc::new(BorrowRef {
+            idx,
+            data,
+            borrower: BorrowMutex::new(),
+        });
+        self.refs.insert(idx, borrow_ref.clone());
+        Some(borrow_ref)
+    }
+
+    pub fn unregister(&self, borrow_ref: Arc<BorrowRef<T, R>>) {
+        self.refs.remove(borrow_ref.idx);
     }
 }
 
@@ -82,6 +92,8 @@ macro_rules! impl_registry_entry {
 
 #[derive(Debug)]
 pub struct BorrowRef<T, R> {
+    /// Index inside [`BorrowRegistry`], if used.
+    idx: u16,
     /// An opaque unique identifier. This can be used to identify
     /// the connection without borrowing, and serves no other purpose.
     pub data: R,
@@ -91,6 +103,7 @@ pub struct BorrowRef<T, R> {
 impl<T, R> BorrowRef<T, R> {
     pub fn new(data: R) -> Arc<BorrowRef<T, R>> {
         Arc::new(BorrowRef {
+            idx: 0,
             data,
             borrower: BorrowMutex::new(),
         })

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 // Copyright(c) 2023 Darek Stojaczyk
 
+pub mod arc_slab;
 pub mod args;
-pub mod atomic_append_vec;
 pub mod locked_vec;
 pub mod packet_stream;
 pub mod registry;
