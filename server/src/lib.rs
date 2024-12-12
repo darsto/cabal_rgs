@@ -3,6 +3,7 @@
 
 pub mod args;
 pub mod atomic_append_vec;
+pub mod locked_vec;
 pub mod packet_stream;
 pub mod registry;
 

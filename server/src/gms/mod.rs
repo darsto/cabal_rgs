@@ -2,6 +2,7 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use crate::executor;
+use crate::locked_vec::LockedVec;
 use crate::packet_stream::{IPCPacketStream, Service};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Args;
@@ -14,7 +15,7 @@ use pkt_global::CustomIdPacket;
 use core::any::TypeId;
 use std::fmt::Display;
 use std::net::TcpStream;
-use std::sync::Weak;
+use std::sync::{RwLock, Weak};
 use std::{net::TcpListener, sync::Arc};
 
 use anyhow::{anyhow, bail, Result};
@@ -38,9 +39,12 @@ pub struct GmsArgs {}
 
 pub struct Listener {
     me: Weak<Listener>,
+    args: Arc<crate::args::Config>,
     tcp_listener: Async<TcpListener>,
     connections: BorrowRegistry<pkt_common::Connect>,
-    args: Arc<crate::args::Config>,
+    worlds: LockedVec<Arc<BorrowRef<pkt_common::Connect>>>,
+    db: LockedVec<Arc<BorrowRef<pkt_common::Connect>>>,
+    login: LockedVec<Arc<BorrowRef<pkt_common::Connect>>>,
 }
 
 impl std::fmt::Display for Listener {
@@ -56,9 +60,12 @@ impl Listener {
     pub fn new(tcp_listener: Async<TcpListener>, args: &Arc<crate::args::Config>) -> Arc<Self> {
         Arc::new_cyclic(|me| Self {
             me: me.clone(),
+            args: args.clone(),
             tcp_listener,
             connections: BorrowRegistry::new("GMS", 16),
-            args: args.clone(),
+            worlds: LockedVec::new(),
+            db: LockedVec::new(),
+            login: LockedVec::new(),
         })
     }
 
@@ -100,6 +107,8 @@ impl Listener {
                 .add_borrower(TypeId::of::<GlobalDbHandler>(), stream.other_id.into())
                 .unwrap();
 
+            listener.db.push(conn_ref.clone());
+
             let conn = Connection {
                 conn_ref,
                 listener,
@@ -140,16 +149,6 @@ impl Listener {
         stream: IPCPacketStream<Async<TcpStream>>,
     ) -> Result<()> {
         let id = Connect::from(stream.other_id);
-        if let Some(conn) = self.connections.refs.iter().find(|conn| {
-            let s = &conn.data;
-            s.service == id.service && s.world_id == id.world_id && s.channel_id == id.channel_id
-        }) {
-            bail!(
-                    "{self}: Received multiple connections from the same service: {id:?}, previous: {:?}",
-                    &conn.data
-                );
-        }
-
         let conn_ref = self
             .connections
             .add_borrower(
@@ -165,6 +164,13 @@ impl Listener {
                 id.clone(),
             )
             .unwrap();
+
+        match id.service {
+            ServiceID::WorldSvr => self.worlds.push(conn_ref.clone()),
+            ServiceID::LoginSvr => self.login.push(conn_ref.clone()),
+            _ => {}
+        }
+
         let conn = Connection {
             conn_ref,
             listener: self.clone(),
@@ -202,13 +208,13 @@ impl Connection {
     pub async fn handle_route_packet(&mut self, p: pkt_global::RoutePacket) -> Result<()> {
         let route_hdr = &p.droute_hdr.route_hdr;
 
-        let Some(conn_ref) = self.listener.connections.refs.iter().find(|conn_ref| {
+        // original GMS routes IDs 1,1 to WorldSvr1,channel1, not ChatNode or AgentShop
+        // I yet have to see a packet routed to ChatNode/AgentShop to see how it's done
+        let login = self.listener.login.cloned();
+        let worlds = self.listener.worlds.cloned();
+        let Some(conn_ref) = login.iter().chain(worlds.iter()).find(|conn_ref| {
             let s = &conn_ref.data;
-            // original GMS routes IDs 1,1 to WorldSvr1,channel1, not ChatNode or AgentShop
-            // I yet have to see a packet routed to ChatNode/AgentShop to see how it's done
-            (s.service == ServiceID::WorldSvr || s.service == ServiceID::LoginSvr)
-                && s.world_id == route_hdr.server_id
-                && s.channel_id == route_hdr.group_id
+            s.world_id == route_hdr.server_id && s.channel_id == route_hdr.group_id
         }) else {
             bail!("{self}: Can't find a conn to route to: {route_hdr:?}");
         };

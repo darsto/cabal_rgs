@@ -163,14 +163,13 @@ impl GlobalWorldHandler {
         // server. We'll let GlobalLoginHandler do that.
         // In the orignal GMS there should be at most one LoginSvr,
         // but here it doesn't hurt to support more (untested though)
-        let listener = self.conn.listener.clone();
+        let login_srvs = self.conn.listener.login.cloned().into_iter();
+
         self.lend_self_until(async {
-            let conns = BorrowRegistry::borrow_multiple::<GlobalLoginHandler>(
-                listener.connections.refs.iter(),
-            );
-            async_for_each!(mut conn in conns => {
+            for conn_ref in login_srvs {
+                let mut conn = conn_ref.borrow::<GlobalLoginHandler>().await.unwrap();
                 conn.notify_user_counts = true;
-            });
+            }
         })
         .await;
 

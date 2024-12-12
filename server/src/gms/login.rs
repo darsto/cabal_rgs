@@ -118,14 +118,12 @@ impl GlobalLoginHandler {
         // TODO: group those into game servers; for now we assume only 1 server
         let mut groups = Vec::new();
 
-        let conns = BorrowRegistry::borrow_multiple::<GlobalWorldHandler>(
-            self.conn.listener.connections.refs.iter(),
-        );
-        async_for_each!(mut conn in conns => {
+        for conn_ref in self.conn.listener.worlds.cloned().into_iter() {
+            let mut conn = conn_ref.borrow::<GlobalWorldHandler>().await.unwrap();
             if let Some(group) = conn.group_node() {
                 groups.push(group);
             }
-        });
+        }
 
         // Tell each WorldSvr about the other channels
         // (perhaps for the "Switch Channel" functionality?)
@@ -134,17 +132,15 @@ impl GlobalLoginHandler {
             groups: groups.clone().into(),
         };
 
-        let conns = BorrowRegistry::borrow_multiple::<GlobalWorldHandler>(
-            self.conn.listener.connections.refs.iter(),
-        );
-        async_for_each!(mut conn in conns => {
+        for conn_ref in self.conn.listener.worlds.cloned().into_iter() {
+            let mut conn = conn_ref.borrow::<GlobalWorldHandler>().await.unwrap();
             if let Err(e) = conn.conn.stream.send(&world_srv_state).await {
                 error!(
                     "{self}: Failed to send WorldServerState to {}: {e}",
                     conn.conn
                 );
             }
-        });
+        }
 
         let mut servers = vec![];
         if !groups.is_empty() {
@@ -183,17 +179,15 @@ impl GlobalLoginHandler {
     pub async fn handle_system_message(&mut self, p: SystemMessage) -> Result<()> {
         let resp = SystemMessageForwarded { data: p };
 
-        let conns = BorrowRegistry::borrow_multiple::<GlobalWorldHandler>(
-            self.conn.listener.connections.refs.iter(),
-        );
-        async_for_each!(mut conn in conns => {
+        for conn_ref in self.conn.listener.worlds.cloned().into_iter() {
+            let mut conn = conn_ref.borrow::<GlobalWorldHandler>().await.unwrap();
             if let Err(e) = conn.conn.stream.send(&resp).await {
                 error!(
                     "{self}: Failed to forward SystemMessage to {}: {e}",
                     conn.conn
                 );
             }
-        });
+        }
 
         self.conn.stream.send(&resp).await.unwrap();
         Ok(())
@@ -202,17 +196,15 @@ impl GlobalLoginHandler {
     pub async fn handle_login_stt(&mut self, p: SetLoginInstance) -> Result<()> {
         debug!("{self}: New login! {p:?}");
 
-        let conns = BorrowRegistry::borrow_multiple::<GlobalDbHandler>(
-            self.conn.listener.connections.refs.iter(),
-        );
-        async_for_each!(mut conn in conns => {
+        for conn_ref in self.conn.listener.db.cloned().into_iter() {
+            let mut conn = conn_ref.borrow::<GlobalDbHandler>().await.unwrap();
             if let Err(e) = conn.conn.stream.send(&p).await {
                 error!(
                     "{self}: Failed to send SetLoginInstance to {}: {e}",
                     conn.conn
                 );
             }
-        });
+        }
 
         Ok(())
     }
@@ -225,17 +217,15 @@ impl GlobalLoginHandler {
             unk1: p.unk1,
             unk2: p.unk2,
         };
-        let conns = BorrowRegistry::borrow_multiple::<GlobalWorldHandler>(
-            self.conn.listener.connections.refs.iter(),
-        );
-        async_for_each!(mut conn in conns => {
+        for conn_ref in self.conn.listener.worlds.cloned().into_iter() {
+            let mut conn = conn_ref.borrow::<GlobalWorldHandler>().await.unwrap();
             if let Err(e) = conn.conn.stream.send(&resp).await {
                 error!(
                     "{self}: Failed to send MultipleLoginDisconnectResponse to {}: {e}",
                     conn.conn
                 );
             }
-        });
+        }
 
         if let Err(e) = self.conn.stream.send(&resp).await {
             error!("{self}: Failed to send MultipleLoginDisconnectResponse to Self: {e}");
@@ -252,17 +242,15 @@ impl GlobalLoginHandler {
             unk9: Arr::default(),
         };
 
-        let conns = BorrowRegistry::borrow_multiple::<GlobalDbHandler>(
-            self.conn.listener.connections.refs.iter(),
-        );
-        async_for_each!(mut conn in conns => {
+        for conn_ref in self.conn.listener.db.cloned().into_iter() {
+            let mut conn = conn_ref.borrow::<GlobalDbHandler>().await.unwrap();
             if let Err(e) = conn.conn.stream.send(&resp).await {
                 error!(
                     "{self}: Failed to send MultipleLoginDisconnectResponse to {}: {e}",
                     conn.conn
                 );
             }
-        });
+        }
 
         Ok(())
     }

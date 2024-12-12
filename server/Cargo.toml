@@ -39,3 +39,4 @@ log = "0.4.20"
 env_logger = "0.10.1"
 rsa = { version = "0.9.7", features = ["sha2"] }
 sha1 = "0.10.6"
+crossbeam-queue = "0.3.11"
