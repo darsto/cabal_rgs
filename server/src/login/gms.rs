@@ -99,11 +99,10 @@ impl GmsHandler {
                 // nothing to do
             }
             Packet::VerifyLinks(p) => {
+                let user_idx = p.droute_hdr.to_idx;
                 let auth_key = p.auth_key;
-                let Some(user_conn) = self.listener.connections.refs.get(auth_key as _)
-                // TODO
-                else {
-                    warn!("{self}: Can't find user connection {auth_key} for VerifyLinks");
+                let Some(user_conn) = self.listener.connections.refs.get(user_idx) else {
+                    warn!("{self}: Can't find user connection #{user_idx} for VerifyLinks");
                     // it could have just dropped
                     return Ok(());
                 };
@@ -127,7 +126,7 @@ impl GmsHandler {
 
                 let user_conn = user_conn.clone();
                 let world_servers = self.world_servers.clone();
-                let user_unique_idx = self
+                let user_auth_key = self
                     .lend_self_until(async {
                         let mut user_conn = user_conn.borrow().await.ok()?;
                         user_conn
@@ -137,12 +136,12 @@ impl GmsHandler {
                             })
                             .await
                             .ok()?;
-                        user_conn.set_authentified(p);
-                        Some(user_conn.user_idx)
+                        user_conn.set_authenticated(p);
+                        Some(user_conn.auth_key)
                     })
                     .await;
-                if user_unique_idx.is_none() {
-                    warn!("{self}: Can't verify user connection {auth_key}");
+                if !user_auth_key.is_some_and(|user_auth_key| user_auth_key == auth_key) {
+                    warn!("{self}: Can't verify user connection #{user_idx}");
                 }
 
                 self.stream
@@ -150,12 +149,8 @@ impl GmsHandler {
                         id: RoutePacket::ID,
                         data: VerifyLinksResult {
                             droute_hdr: gms_response_hdr,
-                            user_idx: if let Some(idx) = user_unique_idx {
-                                idx as u32
-                            } else {
-                                0
-                            },
-                            status: if user_unique_idx.is_some() { 1 } else { 0 },
+                            user_idx: user_idx as _,
+                            status: if user_auth_key.is_some() { 1 } else { 0 },
                         },
                     })
                     .await

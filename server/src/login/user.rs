@@ -51,11 +51,12 @@ pub struct UserConnHandler {
     pub listener: Arc<Listener>,
     pub stream: PacketStream<Async<TcpStream>>,
     pub conn_ref: Arc<BorrowRef<UserConnHandler, ()>>,
+    pub user_idx: u16,
+    pub auth_key: u32,
     ip: [u8; 4],
     #[allow(dead_code)]
     client_auth_key: u32,
     username: Option<String>,
-    pub user_idx: u16,
     auth_ctx: Option<AuthenticatedUserContext>,
 }
 crate::impl_registry_entry!(
@@ -78,17 +79,19 @@ impl UserConnHandler {
         ip: Ipv4Addr,
         client_auth_key: u32,
     ) -> Self {
-        let ip = ip.octets();
         let user_idx = conn_ref.idx;
+        let ip = ip.octets();
+        let auth_key = rand::random::<u32>();
 
         Self {
             listener,
             stream,
             conn_ref,
+            user_idx,
+            auth_key,
             ip,
             client_auth_key,
             username: None,
-            user_idx,
             auth_ctx: None,
         }
     }
@@ -102,8 +105,8 @@ impl UserConnHandler {
             self.stream
                 .send(&pkt_login::S2CConnect {
                     xor_seed_2,
-                    auth_key: self.user_idx as u32, // FIXME! THIS MUST BE UNIQUE
-                    // this will be also sent to WorldSvr
+                    auth_key: self.auth_key,
+                    // ^ this will be also sent to WorldSvr
                     // and we might receive it eventually from GMS
                     user_idx: self.user_idx,
                     xor_key_idx,
@@ -502,7 +505,7 @@ impl UserConnHandler {
         Ok(())
     }
 
-    pub fn set_authentified(&mut self, p: VerifyLinks) {
+    pub fn set_authenticated(&mut self, p: VerifyLinks) {
         let Some(username) = CStr::from_bytes_until_nul(&*p.username)
             .ok()
             .and_then(|s| s.to_str().ok())

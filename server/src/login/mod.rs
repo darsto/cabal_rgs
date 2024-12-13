@@ -14,7 +14,6 @@ use user::UserConnHandler;
 
 use std::net::{IpAddr, TcpStream};
 use std::os::fd::{AsFd, AsRawFd};
-use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Weak;
 use std::{net::TcpListener, sync::Arc};
 
@@ -131,8 +130,7 @@ impl Listener {
         let auth_key = p.auth_key;
 
         let conn_ref = self.connections.register(()).unwrap();
-        let mut handler =
-            UserConnHandler::new(self.clone(), stream, conn_ref, ip, auth_key);
+        let mut handler = UserConnHandler::new(self.clone(), stream, conn_ref, ip, auth_key);
         let result = handler.handle().await;
         if result.is_err() {
             let _ = handler.send_diconnect();
