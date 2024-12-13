@@ -18,7 +18,7 @@ login = []
 
 [dependencies]
 packet = { path = "../packet" }
-async_proc = { path = "/home/dar/proj/async_proc/lib" }
+async_proc = { git = "https://github.com/darsto/async_proc.git" }
 aria = { git = "https://github.com/darsto/aria.git", branch = "master" }
 borrow_mutex = "0.1.1"
 anyhow = "1.0"
