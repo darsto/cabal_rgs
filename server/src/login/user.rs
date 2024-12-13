@@ -48,9 +48,9 @@ struct AuthenticatedUserContext {
 }
 
 pub struct UserConnHandler {
-    pub conn_ref: Arc<BorrowRef<UserConnHandler, u32>>,
     pub listener: Arc<Listener>,
     pub stream: PacketStream<Async<TcpStream>>,
+    pub conn_ref: Arc<BorrowRef<UserConnHandler, ()>>,
     ip: [u8; 4],
     #[allow(dead_code)]
     client_auth_key: u32,
@@ -60,7 +60,7 @@ pub struct UserConnHandler {
 }
 crate::impl_registry_entry!(
     UserConnHandler,
-    RefData = u32,
+    RefData = (),
     borrow_ref = .conn_ref
 );
 
@@ -74,12 +74,12 @@ impl UserConnHandler {
     pub fn new(
         listener: Arc<Listener>,
         stream: PacketStream<Async<TcpStream>>,
-        conn_ref: Arc<BorrowRef<Self, u32>>,
+        conn_ref: Arc<BorrowRef<Self, ()>>,
         ip: Ipv4Addr,
-        user_idx: u16,
         client_auth_key: u32,
     ) -> Self {
         let ip = ip.octets();
+        let user_idx = conn_ref.idx;
 
         Self {
             listener,

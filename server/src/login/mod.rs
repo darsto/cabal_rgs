@@ -34,9 +34,8 @@ pub struct Listener {
     tcp_listener: Async<TcpListener>,
     globaldb: LockedVec<Arc<BorrowRef<GlobalDbHandler, ()>>>,
     gms: LockedVec<Arc<BorrowRef<GmsHandler, ()>>>,
-    connections: BorrowRegistry<UserConnHandler, u32>,
+    connections: BorrowRegistry<UserConnHandler, ()>,
     args: Arc<crate::args::Config>,
-    unique_conn_idx: AtomicU16,
 }
 
 impl std::fmt::Display for Listener {
@@ -57,7 +56,6 @@ impl Listener {
             gms: LockedVec::new(),
             connections: BorrowRegistry::new(65536),
             args: args.clone(),
-            unique_conn_idx: AtomicU16::new(0),
         })
     }
 
@@ -132,16 +130,14 @@ impl Listener {
         };
         let auth_key = p.auth_key;
 
-        // FIXME! THIS MUST BE UNIQUE
-        let user_idx = self.unique_conn_idx.fetch_add(1, Ordering::Relaxed);
-
-        let conn_ref = self.connections.register(user_idx as u32).unwrap();
+        let conn_ref = self.connections.register(()).unwrap();
         let mut handler =
-            UserConnHandler::new(self.clone(), stream, conn_ref, ip, user_idx, auth_key);
+            UserConnHandler::new(self.clone(), stream, conn_ref, ip, auth_key);
         let result = handler.handle().await;
         if result.is_err() {
             let _ = handler.send_diconnect();
         }
+        self.connections.unregister(&handler.conn_ref);
         result
     }
 

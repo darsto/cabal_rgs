@@ -15,7 +15,7 @@ pub struct BorrowRegistry<T, R> {
 impl<T, R> BorrowRegistry<T, R> {
     pub fn new(max_connections: usize) -> Self {
         Self {
-            refs: ArcSlab::with_capacity(max_connections as u16),
+            refs: ArcSlab::with_capacity(max_connections),
         }
     }
 
@@ -30,7 +30,7 @@ impl<T, R> BorrowRegistry<T, R> {
         Some(borrow_ref)
     }
 
-    pub fn unregister(&self, borrow_ref: Arc<BorrowRef<T, R>>) {
+    pub fn unregister(&self, borrow_ref: &Arc<BorrowRef<T, R>>) {
         self.refs.remove(borrow_ref.idx);
     }
 }
@@ -93,7 +93,7 @@ macro_rules! impl_registry_entry {
 #[derive(Debug)]
 pub struct BorrowRef<T, R> {
     /// Index inside [`BorrowRegistry`], if used.
-    idx: u16,
+    pub idx: u16,
     /// An opaque unique identifier. This can be used to identify
     /// the connection without borrowing, and serves no other purpose.
     pub data: R,

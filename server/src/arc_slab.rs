@@ -18,17 +18,18 @@ impl<T: std::fmt::Debug> std::fmt::Debug for ArcSlab<T> {
 }
 
 impl<T> ArcSlab<T> {
-    pub fn new(capacity: u16) -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self::with_capacity(capacity)
     }
 
-    pub fn with_capacity(capacity: u16) -> Self {
-        let mut vec = Vec::with_capacity(capacity as usize);
+    pub fn with_capacity(capacity: usize) -> Self {
+        assert!(capacity <= u16::MAX as usize + 1);
+        let mut vec = Vec::with_capacity(capacity);
         vec.resize_with(capacity as usize, AtomicPtr::default);
 
-        let free_indices = ArrayQueue::new(capacity as usize);
+        let free_indices = ArrayQueue::new(capacity);
         for i in 0..capacity {
-            let _ = free_indices.push(i);
+            let _ = free_indices.push(i as u16);
         }
 
         Self { vec, free_indices }

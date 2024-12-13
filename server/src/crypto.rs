@@ -2,8 +2,9 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use crate::executor;
+use crate::locked_vec::LockedVec;
 use crate::packet_stream::{IPCPacketStream, Service};
-use crate::registry::{BorrowRef, BorrowRegistry};
+use crate::registry::BorrowRef;
 use aria::BlockExt;
 use clap::Args;
 use log::{debug, error, info, trace};
@@ -26,7 +27,7 @@ pub struct CryptoArgs {}
 pub struct Listener {
     me: Weak<Listener>,
     tcp_listener: Async<TcpListener>,
-    connections: BorrowRegistry<Connection, usize>,
+    connections: LockedVec<Arc<BorrowRef<Connection, usize>>>,
     args: Arc<crate::args::Config>,
 }
 
@@ -35,7 +36,7 @@ impl Listener {
         Arc::new_cyclic(|me| Self {
             me: me.clone(),
             tcp_listener,
-            connections: BorrowRegistry::new(16),
+            connections: LockedVec::with_capacity(16),
             args: args.clone(),
         })
     }
@@ -48,10 +49,8 @@ impl Listener {
 
         loop {
             let (stream, _) = self.tcp_listener.accept().await?;
-            let conn_ref = self
-                .connections
-                .register(stream.as_raw_fd() as usize)
-                .unwrap();
+            let conn_ref = BorrowRef::new(stream.as_raw_fd() as usize);
+            self.connections.push(conn_ref.clone());
 
             // Give the connection handler its own background task
             let listener = self.me.upgrade().unwrap();
