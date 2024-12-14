@@ -155,11 +155,11 @@ assert_def_packet_size!(RequestAuthAccount, 139);
 pub struct ResponseAuthAccount {
     server_id: u8,  // 0x80?
     channel_id: u8, // 1?
-    user_idx: u16,  // 0?
+    db_user_idx: u16,  // idx inside db agent; for VerifyLinks message
     ip: [u8; 4],
     username: Arr<u8, 33>,
     user_id: u32, // 1?
-    login_idx: u8, // 0? 1 on failure?
+    login_idx_existing: u8, // 0; 1 when result 0x22
     result: u8,    // 0x20 - ok
     /*
     0x20 - ok
@@ -202,7 +202,7 @@ pub struct ResponseAuthAccount {
     unk23: u32,             // 0
     unk24: u32,             // 0x477a7190
     unk25: u32,             // 0
-    unk26: u32,             // 0x18c - another counter
+    login_idx: u32,         // total login count
     characters: BoundVec<0, u8>, // i.e. [1, 3] on successful login (server idx1, character idx3), or [0]
 }
 assert_def_packet_size!(ResponseAuthAccount, 189);

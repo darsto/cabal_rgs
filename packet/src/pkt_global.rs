@@ -284,7 +284,7 @@ pub struct VerifyLinks {
     droute_hdr: DuplexRouteHeader,
     auth_key: u32,
     user_id: u32,
-    unk_user_id: u32,
+    login_idx: u32,
     user_ip: [u8; 4],
     resident_num: u32,         // d0 bf 0b 00 ??
     unk2: u32,                 // zero
@@ -336,21 +336,21 @@ assert_def_packet_size!(SubPasswordCheckResponse, 0x2f - Header::SIZE);
 
 #[packet(0xc7c)]
 pub struct MultipleLoginDisconnectRequest {
-    unk1: u32, // user id?
-    unk2: u32, // group id? login counter??
+    user_id: u32,
+    login_idx: u32,
 }
 // broadcasted to all world servers
 
 #[packet(0xc7d)]
 pub struct MultipleLoginDisconnectResponse {
-    unk1: u32,
-    unk2: u32,
+    user_id: u32,
+    login_idx: u32,
 }
 
 #[packet(0x1c)]
 pub struct SetLoginInstance {
-    user_id: u32,        // 1? user id?
-    unk_idx: u32,        // ??
+    user_id: u32,
+    login_idx: u32,
     unk3: u8,            // hardcoded 0? logged in time in mins?
     unk4: Arr<u8, 33>,   // username? sometimes junk. Always null-terminated
     login: u8,           // 1 - login, 0 - logout

@@ -207,7 +207,7 @@ impl GlobalWorldHandler {
         })
     }
 
-    pub async fn handle_shutdown_stats_set(&mut self, p: ShutdownStatsSet) -> Result<()> {
+    pub async fn handle_shutdown_stats_set(&mut self, _: ShutdownStatsSet) -> Result<()> {
         Ok(())
     }
 

@@ -35,7 +35,7 @@ use super::Listener;
 
 struct AuthenticatedUserContext {
     user_id: u32,
-    unk_user_id: u32,
+    login_idx: u32,
     fm_idx: u16,
     resident_num: u32,
     premium_service_type: u32,
@@ -58,6 +58,7 @@ pub struct UserConnHandler {
     client_auth_key: u32,
     username: Option<String>,
     auth_ctx: Option<AuthenticatedUserContext>,
+    pub force_terminate: bool,
 }
 crate::impl_registry_entry!(
     UserConnHandler,
@@ -93,6 +94,7 @@ impl UserConnHandler {
             client_auth_key,
             username: None,
             auth_ctx: None,
+            force_terminate: false,
         }
     }
 
@@ -128,6 +130,10 @@ impl UserConnHandler {
             // or get kicked by GMS telling us we're already authenticated.
             // .lend_self() possibly multiple times to allow for spurious borrows
             let p = loop {
+                if self.force_terminate {
+                    return Ok(());
+                }
+
                 select! {
                     p = self.stream.recv().fuse() => {
                         let p = p.map_err(|e| {
@@ -316,8 +322,8 @@ impl UserConnHandler {
         }
         self.auth_ctx = Some(AuthenticatedUserContext {
             user_id: auth_resp.user_id,
-            unk_user_id: auth_resp.unk26,
-            fm_idx: auth_resp.user_idx,
+            login_idx: auth_resp.login_idx,
+            fm_idx: auth_resp.db_user_idx,
             resident_num: auth_resp.resident_num,
             premium_service_type: auth_resp.premium_service_type,
             premium_expire_time: auth_resp.premium_expire_time,
@@ -326,6 +332,15 @@ impl UserConnHandler {
             unk6: auth_resp.unk23,
             unk7: auth_resp.unk24,
         });
+        if auth_resp.result == 0x20 {
+            self.listener
+                .set_authenticated_connection_idx(auth_resp.user_id, self.user_idx)
+                .await;
+        }
+        if self.force_terminate {
+            // another connection just pushed us out
+            return Ok(());
+        }
 
         let sys_msg = pkt_global::SystemMessage {
             unk2: auth_resp.user_id,
@@ -382,11 +397,16 @@ impl UserConnHandler {
                 }
 
                 let listener = self.listener.clone();
+                let conn_idx = self.user_idx;
                 let gms_pkt = pkt_global::MultipleLoginDisconnectRequest {
-                    unk1: auth_resp.user_id,
-                    unk2: auth_resp.unk26,
+                    user_id: auth_resp.user_id,
+                    login_idx: auth_resp.login_idx,
                 };
                 self.lend_self_until(async {
+                    listener
+                        .set_authenticated_connection_idx(gms_pkt.user_id, conn_idx)
+                        .await;
+
                     let gms = listener.gms.first().unwrap();
                     let mut gms = gms.borrow().await.unwrap();
 
@@ -443,7 +463,7 @@ impl UserConnHandler {
             },
             auth_key: p.unk1,
             user_id: auth_ctx.user_id,
-            unk_user_id: auth_ctx.unk_user_id,
+            login_idx: auth_ctx.login_idx,
             user_ip: self.ip,
             resident_num: auth_ctx.resident_num,
             unk2: 0,
@@ -496,6 +516,10 @@ impl UserConnHandler {
         })
         .await?;
 
+        // We passed the handle to WorldSvr, and we no longer maintain
+        // the connection
+        self.auth_ctx = None;
+
         self.stream
             .send(&S2CVerifyLinks {
                 unk: vec![1, 1, 1].into(),
@@ -520,7 +544,7 @@ impl UserConnHandler {
         self.username = Some(username.to_string());
         self.auth_ctx = Some(AuthenticatedUserContext {
             user_id: p.user_id,
-            unk_user_id: p.unk_user_id,
+            login_idx: p.login_idx,
             fm_idx: p.droute_hdr.to_idx,
             resident_num: p.resident_num,
             premium_service_type: p.premium_service_type,
@@ -535,6 +559,10 @@ impl UserConnHandler {
     async fn handle_authenticated(&mut self) -> Result<()> {
         let _ = self.auth_ctx.as_ref().unwrap();
         loop {
+            if self.force_terminate {
+                return Ok(());
+            }
+
             select! {
                 p = self.stream.recv().fuse() => {
                     let p = p.map_err(|e| {
@@ -559,14 +587,17 @@ impl UserConnHandler {
         }
     }
 
-    pub async fn send_diconnect(&self) -> Result<()> {
+    pub async fn handle_disconnect(&self) -> Result<()> {
         let Some(auth_ctx) = self.auth_ctx.as_ref() else {
             return Ok(());
         };
 
+        self.listener
+            .unset_authenticated_connection_idx(auth_ctx.user_id, self.user_idx);
+
         let pkt = pkt_global::SetLoginInstance {
             user_id: auth_ctx.user_id,
-            unk_idx: auth_ctx.unk_user_id,
+            login_idx: auth_ctx.login_idx,
             unk3: 0,
             unk4: Arr::default(),
             unk6: Arr::default(),

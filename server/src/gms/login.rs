@@ -8,7 +8,6 @@ use anyhow::anyhow;
 use anyhow::Result;
 use async_proc::select;
 use futures::FutureExt;
-use log::debug;
 use log::error;
 use log::info;
 use log::warn;
@@ -213,8 +212,8 @@ impl GlobalLoginHandler {
         p: MultipleLoginDisconnectRequest,
     ) -> Result<()> {
         let resp = MultipleLoginDisconnectResponse {
-            unk1: p.unk1,
-            unk2: p.unk2,
+            user_id: p.user_id,
+            login_idx: p.login_idx,
         };
         for conn_ref in self.listener.worlds.cloned().into_iter() {
             let mut conn = conn_ref.borrow().await.unwrap();
@@ -231,8 +230,8 @@ impl GlobalLoginHandler {
         }
 
         let resp = pkt_global::SetLoginInstance {
-            user_id: p.unk1,
-            unk_idx: p.unk2,
+            user_id: p.user_id,
+            login_idx: p.login_idx,
             unk3: 0,
             unk4: Arr::default(),
             login: 0,
