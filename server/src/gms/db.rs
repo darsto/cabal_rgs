@@ -20,12 +20,12 @@ use super::Listener;
 pub struct GlobalDbHandler {
     pub listener: Arc<Listener>,
     pub stream: IPCPacketStream<Async<TcpStream>>,
-    pub conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
+    pub conn_ref: Arc<BorrowRef<Self, ()>>,
     pub dung_inst_cnt: Option<pkt_global::AdditionalDungeonInstanceCount>,
 }
 crate::impl_registry_entry!(
     GlobalDbHandler,
-    RefData = pkt_common::Connect,
+    RefData = (),
     borrow_ref = .conn_ref
 );
 
@@ -33,7 +33,7 @@ impl GlobalDbHandler {
     pub fn new(
         listener: Arc<Listener>,
         stream: IPCPacketStream<Async<TcpStream>>,
-        conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
+        conn_ref: Arc<BorrowRef<Self, ()>>,
     ) -> Self {
         Self {
             listener,

@@ -21,7 +21,7 @@ use std::time::Duration;
 use std::{net::TcpListener, sync::Arc};
 
 use anyhow::{bail, Context, Result};
-use smol::Async;
+use smol::{Async, Timer};
 
 mod db;
 mod gms;
@@ -153,53 +153,64 @@ impl Listener {
     }
 
     async fn connect_to_globaldb(&self) {
-        let db_stream = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180))
-            .await
-            .unwrap();
-
         let listener = self.me.upgrade().unwrap();
+
+        let conn_ref = BorrowRef::new(());
+        listener.globaldb.push(conn_ref.clone());
+
         // Give the connection handler its own background task
         executor::spawn_local(async move {
-            let stream = IPCPacketStream::from_conn(Service::LoginSvr, Service::DBAgent, db_stream)
-                .await
-                .unwrap();
+            loop {
+                let Ok(db_stream) = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180)).await
+                else {
+                    Timer::after(Duration::from_secs(2)).await;
+                    continue;
+                };
 
-            let conn_ref = BorrowRef::new(());
-            listener.globaldb.push(conn_ref.clone());
+                info!("Listener: DB connection established");
+                let stream =
+                    IPCPacketStream::from_conn(Service::LoginSvr, Service::DBAgent, db_stream)
+                        .await
+                        .unwrap();
 
-            let ret = GlobalDbHandler::new(listener, stream, conn_ref)
-                .handle()
-                .await;
+                let ret = GlobalDbHandler::new(listener.clone(), stream, conn_ref.clone())
+                    .handle()
+                    .await;
 
-            info!("Listener: DB connection closed => {ret:?}");
-            // TODO: reconnect?
+                info!("Listener: DB connection closed => {ret:?}");
+            }
         })
         .detach();
     }
 
     async fn connect_to_gms(&self) {
-        let stream = Async::<TcpStream>::connect(([127, 0, 0, 1], 38170))
-            .await
-            .unwrap();
-
         let listener = self.me.upgrade().unwrap();
+
+        let conn_ref = BorrowRef::new(());
+        listener.gms.push(conn_ref.clone());
+
         // Give the connection handler its own background task
         executor::spawn_local(async move {
-            let stream = IPCPacketStream::from_conn(
-                Service::LoginSvr,
-                Service::GlobalMgrSvr { id: 0 },
-                stream,
-            )
-            .await
-            .unwrap();
+            loop {
+                let Ok(stream) = Async::<TcpStream>::connect(([127, 0, 0, 1], 38170)).await else {
+                    Timer::after(Duration::from_secs(2)).await;
+                    continue;
+                };
 
-            let conn_ref = BorrowRef::new(());
-            listener.gms.push(conn_ref.clone());
+                info!("Listener: GMS connection established");
+                let stream = IPCPacketStream::from_conn(
+                    Service::LoginSvr,
+                    Service::GlobalMgrSvr { id: 0 },
+                    stream,
+                )
+                .await
+                .unwrap();
 
-            let ret = GmsHandler::new(listener, stream, conn_ref).handle().await;
-
-            info!("Listener: GMS connection closed => {ret:?}");
-            // TODO: reconnect?
+                let ret = GmsHandler::new(listener.clone(), stream, conn_ref.clone())
+                    .handle()
+                    .await;
+                info!("Listener: GMS connection closed => {ret:?}");
+            }
         })
         .detach();
     }

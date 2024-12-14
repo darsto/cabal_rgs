@@ -15,10 +15,11 @@ use pkt_global::CustomIdPacket;
 
 use std::net::TcpStream;
 use std::sync::Weak;
+use std::time::Duration;
 use std::{net::TcpListener, sync::Arc};
 
 use anyhow::{anyhow, bail, Result};
-use smol::Async;
+use smol::{Async, Timer};
 
 mod chat;
 use chat::GlobalChatHandler;
@@ -41,7 +42,7 @@ pub struct Listener {
     args: Arc<crate::args::Config>,
     tcp_listener: Async<TcpListener>,
     worlds: LockedVec<Arc<BorrowRef<GlobalWorldHandler, pkt_common::Connect>>>,
-    db: LockedVec<Arc<BorrowRef<GlobalDbHandler, pkt_common::Connect>>>,
+    db: LockedVec<Arc<BorrowRef<GlobalDbHandler, ()>>>,
     login: LockedVec<Arc<BorrowRef<GlobalLoginHandler, pkt_common::Connect>>>,
 }
 
@@ -84,30 +85,34 @@ impl Listener {
             })
             .unwrap();
 
-        let db_stream = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180))
-            .await
-            .unwrap();
-
         let listener = self.me.upgrade().unwrap();
+
+        let conn_ref = BorrowRef::new(());
+        listener.db.push(conn_ref.clone());
+
         // Give the connection handler its own background task
         executor::spawn_local(async move {
-            let stream = IPCPacketStream::from_conn(
-                Service::GlobalMgrSvr { id: 0x80 },
-                Service::DBAgent,
-                db_stream,
-            )
-            .await
-            .unwrap();
+            loop {
+                let Ok(db_stream) = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180)).await
+                else {
+                    Timer::after(Duration::from_secs(2)).await;
+                    continue;
+                };
 
-            let conn_ref = BorrowRef::new(stream.other_id.into());
-            listener.db.push(conn_ref.clone());
+                info!("Listener: DB connection established");
+                let stream = IPCPacketStream::from_conn(
+                    Service::GlobalMgrSvr { id: 0x80 },
+                    Service::DBAgent,
+                    db_stream,
+                )
+                .await
+                .unwrap();
 
-            let ret = GlobalDbHandler::new(listener, stream, conn_ref)
-                .handle()
-                .await;
-
-            info!("Listener: DB connection closed => {ret:?}");
-            // TODO: reconnect?
+                let ret = GlobalDbHandler::new(listener.clone(), stream, conn_ref.clone())
+                    .handle()
+                    .await;
+                info!("Listener: DB connection closed => {ret:?}");
+            }
         })
         .detach();
 
