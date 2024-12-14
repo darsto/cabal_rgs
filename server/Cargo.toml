@@ -20,7 +20,7 @@ login = []
 packet = { path = "../packet" }
 async_proc = { git = "https://github.com/darsto/async_proc.git" }
 aria = { git = "https://github.com/darsto/aria.git", branch = "master" }
-borrow_mutex = "0.1.1"
+borrow_mutex = { git = "https://github.com/darsto/borrow_mutex.git" }
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive", "cargo", "string"] }
 num_enum = "0.7"
