@@ -10,7 +10,7 @@ use anyhow::anyhow;
 use anyhow::{bail, Result};
 use async_proc::select;
 use futures::FutureExt;
-use log::{trace, warn};
+use log::warn;
 use packet::pkt_common::*;
 use packet::pkt_global::*;
 use packet::*;
@@ -127,8 +127,8 @@ impl GlobalWorldHandler {
                         Packet::SubPasswordCheckRequest(p) => {
                             self.handle_sub_password_check(p).await.unwrap();
                         }
-                        Packet::SetLoginInstance(_) => {
-                            // there's nothing to do
+                        Packet::SetLoginInstance(p) => {
+                            self.handle_set_login_instance(p).await.unwrap();
                         }
                         _ => {
                             warn!("{self}: Got unexpected packet: {p:?}");
@@ -208,12 +208,10 @@ impl GlobalWorldHandler {
     }
 
     pub async fn handle_shutdown_stats_set(&mut self, p: ShutdownStatsSet) -> Result<()> {
-        trace!("{self}: {p:?}");
         Ok(())
     }
 
     pub async fn handle_channel_option_sync(&mut self, p: ChannelOptionSync) -> Result<()> {
-        trace!("{self}: {p:?}");
         self.group_node_unk7 = p.unk2;
         self.max_players = p.unk3 as u16;
         self.state = p.unk4;
@@ -221,8 +219,6 @@ impl GlobalWorldHandler {
     }
 
     pub async fn handle_sub_password_check(&mut self, p: SubPasswordCheckRequest) -> Result<()> {
-        trace!("{self}: {p:?}");
-
         // Never ask for PIN
         self.stream
             .send(&SubPasswordCheckResponse {
@@ -235,6 +231,15 @@ impl GlobalWorldHandler {
                 unk4: p.unk4,
             })
             .await?;
+
+        Ok(())
+    }
+
+    pub async fn handle_set_login_instance(&mut self, p: SetLoginInstance) -> Result<()> {
+        for db_ref in self.listener.db.first().iter() {
+            let mut db = db_ref.borrow().await?;
+            db.stream.send(&p).await?;
+        }
 
         Ok(())
     }

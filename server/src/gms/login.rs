@@ -198,9 +198,7 @@ impl GlobalLoginHandler {
     }
 
     pub async fn handle_login_stt(&mut self, p: SetLoginInstance) -> Result<()> {
-        debug!("{self}: New login! {p:?}");
-
-        for conn_ref in self.listener.db.cloned().into_iter() {
+        for conn_ref in self.listener.db.first().iter() {
             let mut conn = conn_ref.borrow().await.unwrap();
             if let Err(e) = conn.stream.send(&p).await {
                 error!("{self}: Failed to send SetLoginInstance to {}: {e}", &*conn);
@@ -234,9 +232,10 @@ impl GlobalLoginHandler {
 
         let resp = pkt_global::SetLoginInstance {
             user_id: p.unk1,
-            unk2: p.unk2,
+            unk_idx: p.unk2,
             unk3: 0,
             unk4: Arr::default(),
+            login: 0,
             unk6: Arr::default(),
             unk7: 0x14,
             unk8: Default::default(),

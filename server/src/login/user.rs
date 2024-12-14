@@ -566,10 +566,11 @@ impl UserConnHandler {
 
         let pkt = pkt_global::SetLoginInstance {
             user_id: auth_ctx.user_id,
-            unk2: auth_ctx.unk_user_id,
+            unk_idx: auth_ctx.unk_user_id,
             unk3: 0,
             unk4: Arr::default(),
             unk6: Arr::default(),
+            login: 0,
             unk7: 0x14,
             unk8: Default::default(),
             unk9: Arr::default(),
