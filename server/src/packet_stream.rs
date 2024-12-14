@@ -211,7 +211,7 @@ impl<T: Unpin + AsyncWrite> IPCPacketStream<T> {
     ) -> Result<Self, anyhow::Error> {
         let config = StreamConfig::ipc(self_id.to_string(), other_id.to_string());
         let mut stream = PacketStream::new(stream, config);
-        stream.send(&Connect::from(self_id)).await.unwrap();
+        stream.send(&Connect::from(self_id)).await?;
 
         Ok(Self {
             inner: stream,

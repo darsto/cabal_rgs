@@ -17,6 +17,7 @@ use packet::*;
 use smol::Async;
 
 use crate::packet_stream::IPCPacketStream;
+use crate::packet_stream::Service;
 use crate::registry::BorrowRef;
 use crate::registry::Entry;
 
@@ -25,12 +26,12 @@ use super::Listener;
 pub struct GlobalLoginHandler {
     pub listener: Arc<Listener>,
     pub stream: IPCPacketStream<Async<TcpStream>>,
-    pub conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
+    pub conn_ref: Arc<BorrowRef<Self, ()>>,
     pub notify_user_counts: bool,
 }
 crate::impl_registry_entry!(
     GlobalLoginHandler,
-    RefData = pkt_common::Connect,
+    RefData = (),
     borrow_ref = .conn_ref
 );
 
@@ -44,7 +45,7 @@ impl GlobalLoginHandler {
     pub fn new(
         listener: Arc<Listener>,
         stream: IPCPacketStream<Async<TcpStream>>,
-        conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
+        conn_ref: Arc<BorrowRef<Self, ()>>,
     ) -> Self {
         Self {
             listener,
@@ -55,8 +56,7 @@ impl GlobalLoginHandler {
     }
 
     pub async fn handle(&mut self) -> Result<()> {
-        let conn_ref = self.conn_ref.clone();
-        let service = &conn_ref.data;
+        let service = Connect::from(Service::LoginSvr);
 
         #[rustfmt::skip]
         self.stream
@@ -197,11 +197,9 @@ impl GlobalLoginHandler {
     }
 
     pub async fn handle_login_stt(&mut self, p: SetLoginInstance) -> Result<()> {
-        for conn_ref in self.listener.db.first().iter() {
-            let mut conn = conn_ref.borrow().await.unwrap();
-            if let Err(e) = conn.stream.send(&p).await {
-                error!("{self}: Failed to send SetLoginInstance to {}: {e}", &*conn);
-            }
+        let mut conn = self.listener.db.borrow().await.unwrap();
+        if let Err(e) = conn.stream.send(&p).await {
+            error!("{self}: Failed to send SetLoginInstance to {}: {e}", &*conn);
         }
 
         Ok(())
@@ -241,14 +239,12 @@ impl GlobalLoginHandler {
             unk9: Arr::default(),
         };
 
-        for conn_ref in self.listener.db.cloned().into_iter() {
-            let mut conn = conn_ref.borrow().await.unwrap();
-            if let Err(e) = conn.stream.send(&resp).await {
-                error!(
-                    "{self}: Failed to send MultipleLoginDisconnectResponse to {}: {e}",
-                    &*conn
-                );
-            }
+        let mut conn = self.listener.db.borrow().await.unwrap();
+        if let Err(e) = conn.stream.send(&resp).await {
+            error!(
+                "{self}: Failed to send MultipleLoginDisconnectResponse to {}: {e}",
+                &*conn
+            );
         }
 
         Ok(())

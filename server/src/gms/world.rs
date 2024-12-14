@@ -170,15 +170,10 @@ impl GlobalWorldHandler {
 
         // We need to send out updates to all world servers and the login
         // server. We'll let GlobalLoginHandler do that.
-        // In the orignal GMS there should be at most one LoginSvr,
-        // but here it doesn't hurt to support more (untested though)
-        let login_srvs = self.listener.login.cloned().into_iter();
-
+        let login_ref = self.listener.login.clone();
         self.lend_self_until(async {
-            for conn_ref in login_srvs {
-                let mut conn = conn_ref.borrow().await.unwrap();
-                conn.notify_user_counts = true;
-            }
+            let mut conn = login_ref.borrow().await.unwrap();
+            conn.notify_user_counts = true;
         })
         .await;
 
@@ -236,10 +231,8 @@ impl GlobalWorldHandler {
     }
 
     pub async fn handle_set_login_instance(&mut self, p: SetLoginInstance) -> Result<()> {
-        for db_ref in self.listener.db.first().iter() {
-            let mut db = db_ref.borrow().await?;
-            db.stream.send(&p).await?;
-        }
+        let mut db = self.listener.db.borrow().await?;
+        db.stream.send(&p).await?;
 
         Ok(())
     }

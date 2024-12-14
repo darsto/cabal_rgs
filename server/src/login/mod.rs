@@ -2,7 +2,6 @@
 // Copyright(c) 2024 Darek Stojaczyk
 
 use crate::executor;
-use crate::locked_vec::LockedVec;
 use crate::packet_stream::{IPCPacketStream, PacketStream, Service, StreamConfig};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Args;
@@ -34,8 +33,8 @@ pub struct LoginArgs {}
 pub struct Listener {
     me: Weak<Listener>,
     tcp_listener: Async<TcpListener>,
-    globaldb: LockedVec<Arc<BorrowRef<GlobalDbHandler, ()>>>,
-    gms: LockedVec<Arc<BorrowRef<GmsHandler, ()>>>,
+    globaldb: Arc<BorrowRef<GlobalDbHandler, ()>>,
+    gms: Arc<BorrowRef<GmsHandler, ()>>,
     authenticated_connections: Mutex<HashMap<u32, u16>>,
     connections: BorrowRegistry<UserConnHandler, ()>,
     args: Arc<crate::args::Config>,
@@ -55,8 +54,8 @@ impl Listener {
         Arc::new_cyclic(|me| Self {
             me: me.clone(),
             tcp_listener,
-            globaldb: LockedVec::new(),
-            gms: LockedVec::new(),
+            globaldb: BorrowRef::new(()),
+            gms: BorrowRef::new(()),
             authenticated_connections: Mutex::new(HashMap::new()),
             connections: BorrowRegistry::new(65536),
             args: args.clone(),
@@ -81,8 +80,8 @@ impl Listener {
             })
             .unwrap();
 
-        self.connect_to_globaldb().await;
-        self.connect_to_gms().await;
+        self.connect_to_globaldb();
+        self.connect_to_gms();
 
         loop {
             let (stream, _) = self.tcp_listener.accept().await.unwrap();
@@ -152,44 +151,35 @@ impl Listener {
         result
     }
 
-    async fn connect_to_globaldb(&self) {
+    fn connect_to_globaldb(&self) {
         let listener = self.me.upgrade().unwrap();
 
-        let conn_ref = BorrowRef::new(());
-        listener.globaldb.push(conn_ref.clone());
-
-        // Give the connection handler its own background task
         executor::spawn_local(async move {
             loop {
-                let Ok(db_stream) = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180)).await
-                else {
+                let Ok(stream) = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180)).await else {
                     Timer::after(Duration::from_secs(2)).await;
                     continue;
                 };
 
                 info!("Listener: DB connection established");
                 let stream =
-                    IPCPacketStream::from_conn(Service::LoginSvr, Service::DBAgent, db_stream)
+                    IPCPacketStream::from_conn(Service::LoginSvr, Service::DBAgent, stream)
                         .await
                         .unwrap();
 
-                let ret = GlobalDbHandler::new(listener.clone(), stream, conn_ref.clone())
+                let conn_ref = listener.globaldb.clone();
+                let ret = GlobalDbHandler::new(listener.clone(), stream, conn_ref)
                     .handle()
                     .await;
-
                 info!("Listener: DB connection closed => {ret:?}");
             }
         })
         .detach();
     }
 
-    async fn connect_to_gms(&self) {
+    fn connect_to_gms(&self) {
         let listener = self.me.upgrade().unwrap();
 
-        let conn_ref = BorrowRef::new(());
-        listener.gms.push(conn_ref.clone());
-
-        // Give the connection handler its own background task
         executor::spawn_local(async move {
             loop {
                 let Ok(stream) = Async::<TcpStream>::connect(([127, 0, 0, 1], 38170)).await else {
@@ -206,7 +196,8 @@ impl Listener {
                 .await
                 .unwrap();
 
-                let ret = GmsHandler::new(listener.clone(), stream, conn_ref.clone())
+                let conn_ref = listener.gms.clone();
+                let ret = GmsHandler::new(listener.clone(), stream, conn_ref)
                     .handle()
                     .await;
                 info!("Listener: GMS connection closed => {ret:?}");

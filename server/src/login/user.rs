@@ -222,8 +222,7 @@ impl UserConnHandler {
             let listener = self.listener.clone();
             let conn_unique_idx = self.user_idx;
             self.lend_self_until(async {
-                let globaldb = listener.globaldb.first().unwrap();
-                let mut globaldb = globaldb.borrow().await.unwrap();
+                let mut globaldb = listener.globaldb.borrow().await.unwrap();
 
                 globaldb
                     .stream
@@ -258,9 +257,7 @@ impl UserConnHandler {
                 let listener = self.listener.clone();
                 let world_servers = self
                     .lend_self_until(async {
-                        let gms = listener.gms.first().unwrap();
-                        let gms = gms.borrow().await.unwrap();
-
+                        let gms = listener.gms.borrow().await.unwrap();
                         gms.world_servers.clone()
                     })
                     .await;
@@ -349,9 +346,7 @@ impl UserConnHandler {
         };
         let listener = self.listener.clone();
         self.lend_self_until(async {
-            let gms = listener.gms.first().unwrap();
-            let mut gms = gms.borrow().await.unwrap();
-
+            let mut gms = listener.gms.borrow().await.unwrap();
             gms.stream.send(&sys_msg).await.unwrap();
 
             let mut timeout = Timer::after(Duration::from_secs(5)).fuse();
@@ -407,9 +402,7 @@ impl UserConnHandler {
                         .set_authenticated_connection_idx(gms_pkt.user_id, conn_idx)
                         .await;
 
-                    let gms = listener.gms.first().unwrap();
-                    let mut gms = gms.borrow().await.unwrap();
-
+                    let mut gms = listener.gms.borrow().await.unwrap();
                     gms.stream.send(&gms_pkt).await.unwrap();
                 })
                 .await;
@@ -484,9 +477,7 @@ impl UserConnHandler {
 
         let listener = self.listener.clone();
         self.lend_self_until(async {
-            let gms = listener.gms.first().unwrap();
-            let mut gms = gms.borrow().await.unwrap();
-
+            let mut gms = listener.gms.borrow().await.unwrap();
             gms.stream
                 .send(&CustomIdPacket {
                     id: RoutePacket::ID,
@@ -607,9 +598,7 @@ impl UserConnHandler {
             unk9: Arr::default(),
         };
 
-        let gms = self.listener.gms.first().unwrap();
-        let mut gms = gms.borrow().await.unwrap();
-
+        let mut gms = self.listener.gms.borrow().await.unwrap();
         gms.stream.send(&pkt).await
     }
 }

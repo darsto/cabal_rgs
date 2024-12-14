@@ -42,8 +42,8 @@ pub struct Listener {
     args: Arc<crate::args::Config>,
     tcp_listener: Async<TcpListener>,
     worlds: LockedVec<Arc<BorrowRef<GlobalWorldHandler, pkt_common::Connect>>>,
-    db: LockedVec<Arc<BorrowRef<GlobalDbHandler, ()>>>,
-    login: LockedVec<Arc<BorrowRef<GlobalLoginHandler, pkt_common::Connect>>>,
+    db: Arc<BorrowRef<GlobalDbHandler, ()>>,
+    login: Arc<BorrowRef<GlobalLoginHandler, ()>>,
 }
 
 impl std::fmt::Display for Listener {
@@ -62,8 +62,8 @@ impl Listener {
             args: args.clone(),
             tcp_listener,
             worlds: LockedVec::new(),
-            db: LockedVec::new(),
-            login: LockedVec::new(),
+            db: BorrowRef::new(()),
+            login: BorrowRef::new(()),
         })
     }
 
@@ -85,36 +85,7 @@ impl Listener {
             })
             .unwrap();
 
-        let listener = self.me.upgrade().unwrap();
-
-        let conn_ref = BorrowRef::new(());
-        listener.db.push(conn_ref.clone());
-
-        // Give the connection handler its own background task
-        executor::spawn_local(async move {
-            loop {
-                let Ok(db_stream) = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180)).await
-                else {
-                    Timer::after(Duration::from_secs(2)).await;
-                    continue;
-                };
-
-                info!("Listener: DB connection established");
-                let stream = IPCPacketStream::from_conn(
-                    Service::GlobalMgrSvr { id: 0x80 },
-                    Service::DBAgent,
-                    db_stream,
-                )
-                .await
-                .unwrap();
-
-                let ret = GlobalDbHandler::new(listener.clone(), stream, conn_ref.clone())
-                    .handle()
-                    .await;
-                info!("Listener: DB connection closed => {ret:?}");
-            }
-        })
-        .detach();
+        self.connect_to_globaldb();
 
         loop {
             let (stream, _) = self.tcp_listener.accept().await.unwrap();
@@ -165,9 +136,7 @@ impl Listener {
                     .await
             }
             ServiceID::LoginSvr => {
-                let conn_ref = BorrowRef::new(id.clone());
-                self.login.push(conn_ref.clone());
-                GlobalLoginHandler::new(listener, stream, conn_ref)
+                GlobalLoginHandler::new(listener, stream, self.login.clone())
                     .handle()
                     .await
             }
@@ -175,6 +144,37 @@ impl Listener {
                 bail!("{self}: Unexpected connection from service {service_id:?}");
             }
         }
+    }
+
+    fn connect_to_globaldb(&self) {
+        let listener = self.me.upgrade().unwrap();
+        let conn_ref = self.db.clone();
+
+        // Give the connection handler its own background task
+        executor::spawn_local(async move {
+            loop {
+                let Ok(db_stream) = Async::<TcpStream>::connect(([127, 0, 0, 1], 38180)).await
+                else {
+                    Timer::after(Duration::from_secs(2)).await;
+                    continue;
+                };
+
+                info!("Listener: DB connection established");
+                let stream = IPCPacketStream::from_conn(
+                    Service::GlobalMgrSvr { id: 0x80 },
+                    Service::DBAgent,
+                    db_stream,
+                )
+                .await
+                .unwrap();
+
+                let ret = GlobalDbHandler::new(listener.clone(), stream, conn_ref.clone())
+                    .handle()
+                    .await;
+                info!("Listener: DB connection closed => {ret:?}");
+            }
+        })
+        .detach();
     }
 }
 
@@ -184,36 +184,28 @@ pub async fn handle_route_packet(
 ) -> Result<()> {
     let route_hdr = p.droute_hdr.route_hdr.clone();
 
-    // original GMS routes IDs 1,1 to WorldSvr1,channel1, not ChatNode or AgentShop
-    // I yet have to see a packet routed to ChatNode/AgentShop to see how it's done
-    let logins = listener.login.cloned();
+    let login_route = Connect::from(Service::LoginSvr);
     let worlds = listener.worlds.cloned();
 
-    enum EitherRef {
-        Login(Arc<BorrowRef<GlobalLoginHandler, pkt_common::Connect>>),
-        World(Arc<BorrowRef<GlobalWorldHandler, pkt_common::Connect>>),
-    }
+    let mut target_stream = {
+        // original GMS routes IDs 1,1 to WorldSvr1,channel1, not ChatNode or AgentShop
+        // I yet have to see a packet routed to ChatNode/AgentShop to see how it's done
 
-    let login_ref = logins.into_iter().find(|conn_ref| {
-        let s = &conn_ref.data;
-        s.world_id == route_hdr.server_id && s.channel_id == route_hdr.group_id
-    });
-    let world_ref = worlds.into_iter().find(|conn_ref| {
-        let s = &conn_ref.data;
-        s.world_id == route_hdr.server_id && s.channel_id == route_hdr.group_id
-    });
-    let Some(target_ref) = login_ref
-        .map(|l| EitherRef::Login(l))
-        .or(world_ref.map(|w| EitherRef::World(w)))
-    else {
-        bail!("Can't find a conn to route to: {route_hdr:?}");
-    };
-
-    let mut target_stream = match &target_ref {
-        EitherRef::Login(login_ref) => {
+        if route_hdr.server_id == login_route.world_id
+            && route_hdr.group_id == login_route.channel_id
+        {
+            let login_ref = &listener.login;
             BorrowGuardArmed::map(login_ref.borrow().await.unwrap(), |m| &mut m.stream)
-        }
-        EitherRef::World(world_ref) => {
+        } else {
+            let world_ref = worlds.iter().find(|conn_ref| {
+                let s = &conn_ref.data;
+                s.world_id == route_hdr.server_id && s.channel_id == route_hdr.group_id
+            });
+
+            let Some(world_ref) = world_ref else {
+                bail!("Can't find a conn to route to: {route_hdr:?}");
+            };
+
             BorrowGuardArmed::map(world_ref.borrow().await.unwrap(), |m| &mut m.stream)
         }
     };
