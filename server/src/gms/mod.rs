@@ -131,9 +131,15 @@ impl Listener {
             ServiceID::WorldSvr => {
                 let conn_ref = BorrowRef::new(id.clone());
                 self.worlds.push(conn_ref.clone());
-                GlobalWorldHandler::new(listener, stream, conn_ref)
-                    .handle()
-                    .await
+                let mut handler = GlobalWorldHandler::new(listener, stream, conn_ref);
+                let ret = handler.handle().await;
+                let mut worlds = self.worlds.lock_write();
+                let world_idx = worlds
+                    .iter()
+                    .position(|w| Arc::ptr_eq(w, &handler.conn_ref))
+                    .unwrap();
+                worlds.remove(world_idx);
+                ret
             }
             ServiceID::LoginSvr => {
                 GlobalLoginHandler::new(listener, stream, self.login.clone())
