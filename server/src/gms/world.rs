@@ -17,7 +17,7 @@ use packet::*;
 use smol::Async;
 
 use crate::packet_stream::IPCPacketStream;
-use crate::registry::{BorrowRef, Entry};
+use crate::registry::{BorrowRef, Borrowable};
 
 use super::Listener;
 
@@ -30,7 +30,7 @@ pub struct GlobalWorldHandler {
     group_node_unk7: u16,
     max_players: u16,
 }
-crate::impl_registry_entry!(
+crate::impl_borrowable!(
     GlobalWorldHandler,
     RefData = pkt_common::Connect,
     borrow_ref = .conn_ref

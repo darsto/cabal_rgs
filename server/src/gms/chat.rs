@@ -14,7 +14,7 @@ use smol::Async;
 use super::Listener;
 use crate::{
     packet_stream::IPCPacketStream,
-    registry::{BorrowRef, Entry},
+    registry::{BorrowRef, Borrowable},
 };
 
 pub struct GlobalChatHandler {
@@ -22,7 +22,7 @@ pub struct GlobalChatHandler {
     pub stream: IPCPacketStream<Async<TcpStream>>,
     pub conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
 }
-crate::impl_registry_entry!(
+crate::impl_borrowable!(
     GlobalChatHandler,
     RefData = pkt_common::Connect,
     borrow_ref = .conn_ref

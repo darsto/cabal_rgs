@@ -95,7 +95,7 @@ pub struct Connection {
     pub conn_ref: Arc<BorrowRef<Connection, usize>>,
     pub shortkey: OnceCell<aria::Key>,
 }
-crate::impl_registry_entry!(
+crate::impl_borrowable!(
     Connection,
     RefData = usize,
     borrow_ref = .conn_ref

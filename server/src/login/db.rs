@@ -14,7 +14,7 @@ use smol::Async;
 
 use crate::{
     packet_stream::IPCPacketStream,
-    registry::{BorrowRef, Entry},
+    registry::{BorrowRef, Borrowable},
 };
 
 use super::Listener;
@@ -24,7 +24,7 @@ pub struct GlobalDbHandler {
     pub stream: IPCPacketStream<Async<TcpStream>>,
     pub conn_ref: Arc<BorrowRef<Self, ()>>,
 }
-crate::impl_registry_entry!(
+crate::impl_borrowable!(
     GlobalDbHandler,
     RefData = (),
     borrow_ref =.conn_ref

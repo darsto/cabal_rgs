@@ -13,7 +13,7 @@ use smol::Async;
 
 use crate::{
     packet_stream::IPCPacketStream,
-    registry::{BorrowRef, Entry},
+    registry::{BorrowRef, Borrowable},
 };
 
 use super::Listener;
@@ -23,7 +23,7 @@ pub struct GlobalAgentShopHandler {
     pub stream: IPCPacketStream<Async<TcpStream>>,
     pub conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
 }
-crate::impl_registry_entry!(
+crate::impl_borrowable!(
     GlobalAgentShopHandler,
     RefData = pkt_common::Connect,
     borrow_ref = .conn_ref

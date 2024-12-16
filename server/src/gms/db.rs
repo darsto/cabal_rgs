@@ -13,7 +13,7 @@ use packet::*;
 use smol::{Async, Timer};
 
 use crate::registry::BorrowRef;
-use crate::{packet_stream::IPCPacketStream, registry::Entry};
+use crate::{packet_stream::IPCPacketStream, registry::Borrowable};
 
 use super::Listener;
 
@@ -23,7 +23,7 @@ pub struct GlobalDbHandler {
     pub conn_ref: Arc<BorrowRef<Self, ()>>,
     pub dung_inst_cnt: Option<pkt_global::AdditionalDungeonInstanceCount>,
 }
-crate::impl_registry_entry!(
+crate::impl_borrowable!(
     GlobalDbHandler,
     RefData = (),
     borrow_ref = .conn_ref

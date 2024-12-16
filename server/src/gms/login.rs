@@ -19,7 +19,7 @@ use smol::Async;
 use crate::packet_stream::IPCPacketStream;
 use crate::packet_stream::Service;
 use crate::registry::BorrowRef;
-use crate::registry::Entry;
+use crate::registry::Borrowable;
 
 use super::Listener;
 
@@ -29,7 +29,7 @@ pub struct GlobalLoginHandler {
     pub conn_ref: Arc<BorrowRef<Self, ()>>,
     pub notify_user_counts: bool,
 }
-crate::impl_registry_entry!(
+crate::impl_borrowable!(
     GlobalLoginHandler,
     RefData = (),
     borrow_ref = .conn_ref

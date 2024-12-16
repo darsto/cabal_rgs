@@ -38,7 +38,7 @@ impl<T, R> BorrowRegistry<T, R> {
 const BORROW_MUTEX_SIZE: usize = 16;
 
 #[allow(dead_code)]
-pub trait Entry: Send + std::fmt::Display {
+pub trait Borrowable: Send + std::fmt::Display {
     type RefData;
 
     fn borrow_ref(&self) -> &Arc<BorrowRef<Self, Self::RefData>>
@@ -79,9 +79,9 @@ pub trait Entry: Send + std::fmt::Display {
 }
 
 #[macro_export]
-macro_rules! impl_registry_entry {
+macro_rules! impl_borrowable {
     ($handler:ty, RefData = $borrow_ref_type:ty, borrow_ref = $(. $borrow_ref_name:ident)+) => {
-        impl $crate::registry::Entry for $handler {
+        impl $crate::registry::Borrowable for $handler {
             type RefData = $borrow_ref_type;
             fn borrow_ref(&self) -> &::std::sync::Arc<crate::registry::BorrowRef<Self, Self::RefData>> {
                 &self $(. $borrow_ref_name)+

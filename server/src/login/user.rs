@@ -29,7 +29,7 @@ use smol::Timer;
 
 use crate::packet_stream::PacketStream;
 use crate::registry::BorrowRef;
-use crate::registry::Entry;
+use crate::registry::Borrowable;
 
 use super::Listener;
 
@@ -60,7 +60,7 @@ pub struct UserConnHandler {
     auth_ctx: Option<AuthenticatedUserContext>,
     pub force_terminate: bool,
 }
-crate::impl_registry_entry!(
+crate::impl_borrowable!(
     UserConnHandler,
     RefData = (),
     borrow_ref = .conn_ref

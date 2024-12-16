@@ -17,7 +17,7 @@ use smol::{Async, Timer};
 
 use crate::{
     packet_stream::IPCPacketStream,
-    registry::{BorrowRef, Entry},
+    registry::{BorrowRef, Borrowable},
 };
 
 use super::Listener;
@@ -28,7 +28,7 @@ pub struct GmsHandler {
     pub stream: IPCPacketStream<Async<TcpStream>>,
     pub world_servers: Vec<LoginServerNode>,
 }
-crate::impl_registry_entry!(
+crate::impl_borrowable!(
     GmsHandler,
     RefData = (),
     borrow_ref = .conn_ref

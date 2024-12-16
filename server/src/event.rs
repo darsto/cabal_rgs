@@ -82,7 +82,7 @@ pub struct Connection {
     pub listener: Arc<Listener>,
     pub conn_ref: Arc<BorrowRef<Connection, usize>>,
 }
-crate::impl_registry_entry!(
+crate::impl_borrowable!(
     Connection,
     RefData = usize,
     borrow_ref =.conn_ref
