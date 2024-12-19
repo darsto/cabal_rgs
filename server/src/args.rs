@@ -34,6 +34,8 @@ pub enum Service {
     Gms(crate::gms::GmsArgs),
     #[cfg(feature = "login")]
     Login(crate::login::LoginArgs),
+    #[cfg(feature = "party")]
+    Party(crate::party::PartyArgs),
 }
 
 /// Common (non-service-specific) configuration

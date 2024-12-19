@@ -17,6 +17,8 @@ pub mod gms;
 pub mod login;
 #[cfg(feature = "proxy")]
 pub mod proxy;
+#[cfg(feature = "party")]
+pub mod party;
 
 use log::LevelFilter;
 

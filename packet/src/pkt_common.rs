@@ -47,6 +47,7 @@ pub enum ServiceID {
     AgentShop = 0xe9,    // 233
     EventMgr = 0xf5,     // 245
     GlobalMgrSvr = 0xf6, // 246
+    Party = 0xf7,        // 247
     ChatNode = 0xfa,     // 250
     RockNRoll = 0xfd,    // 253
 }

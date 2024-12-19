@@ -8,6 +8,7 @@ use crate::pkt_crypto::*;
 use crate::pkt_event::*;
 use crate::pkt_global::*;
 use crate::pkt_login::*;
+use crate::pkt_party::*;
 
 use crate::Header;
 use crate::Payload;
@@ -66,6 +67,42 @@ pub enum Packet {
     // Login Manager
     RequestClientVersion,
     ResponseAuthAccount,
+
+    // Party Manager
+    ClientConnect,
+    PartyInvite,
+    PartyInviteAck,
+    PartyInviteResult,
+    PartyInviteCancel,
+    PartyLeave,
+    PartyKickout,
+    PartyLeaderChange,
+    PartyAuthChange,
+    PartyLootingChange,
+    ClientDisconnect,
+    PartyMemberDungeonCheck,
+    PartyMessage,
+    PartyMemberStatsChange,
+    IPCInstantWarAutoParty,
+    PartySearchRegist,
+    PartySearchRegistCancel,
+    PartySearchList,
+    PartySearchChange,
+    PartySearchRegistAutoCancel,
+    OathInfoRegist,
+    AssistantSummon,
+    AssistantSummonCancel,
+    SavedSingleDungeonSet,
+    SavedSingleDungeonClear,
+    // Party Manager, sent only
+    PartyInviteResultAck,
+    PartyStats,
+    PartyKickoutAck,
+    PartyLeaderChangeAck,
+    PartyAuthChangeAck,
+    PartyLootingChangeAck,
+    PartyClear,
+    PartyLeaveAck,
 }
 
 impl Packet {

@@ -9,6 +9,7 @@ pub mod pkt_crypto;
 pub mod pkt_event;
 pub mod pkt_global;
 pub mod pkt_login;
+pub mod pkt_party;
 
 mod packets;
 pub use packets::*;

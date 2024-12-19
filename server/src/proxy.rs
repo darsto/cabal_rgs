@@ -151,7 +151,7 @@ impl<U: Unpin + AsyncRead, D: Unpin + AsyncWrite> UpConnection<U, D> {
     pub async fn recv_upstream(mut self) -> Result<()> {
         loop {
             let p = self.stream.recv().await?;
-            trace!("{self}: Got up packet({:#x}): {p:?}", p.id());
+            info!("{self}: Got up packet({:#x}): {p:?}", p.id());
             self.downstream.send(&p).await?;
         }
     }
@@ -161,7 +161,7 @@ impl<U: Unpin + AsyncWrite, D: Unpin + AsyncRead> DwConnection<U, D> {
     pub async fn recv_downstream(mut self) -> Result<()> {
         loop {
             let p = self.downstream.recv().await?;
-            trace!("{self}: Got dw packet({:#x}): {p:?}", p.id());
+            info!("{self}: Got dw packet({:#x}): {p:?}", p.id());
             self.stream.send(&p).await?;
         }
     }

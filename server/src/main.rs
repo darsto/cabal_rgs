@@ -76,6 +76,18 @@ fn main() {
         executor::spawn_local(async move { listener.listen().await }).detach();
     }
 
+    #[cfg(feature = "party")]
+    if args
+        .services
+        .iter()
+        .any(|f| matches!(f, server::args::Service::Party { .. }))
+    {
+        let sock = Async::<TcpListener>::bind(([127, 0, 0, 1], 38201)) //
+            .expect("Cannot bind to 38201");
+        let mut listener = server::party::Listener::new(sock, &args);
+        executor::spawn_local(async move { listener.listen().await }).detach();
+    }
+
     executor::run_until(future::pending::<()>());
     // this never returns
 }

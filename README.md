@@ -5,6 +5,7 @@ Reverse-engineered replacement for the following Cabal Online Episode 8 server-s
  - EventMgr (as `event`) - functional, but doesn't provide any events
  - GlobalMgrSvr (as `gms`) - functional, so far only tested with a single WorldSvr
  - LoginSvr - (as `login`) - fully functional
+ - PartySvr - (as `party`) - WIP
 
 This project is aiming to replace most dummy Cabal services with one, single executable. There's no extra functionality added, currently this is aiming only at simplification and demystification.
 

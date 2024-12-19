@@ -244,60 +244,56 @@ pub fn packet_list(
     let ser_match_arms = packets.iter().map(|packet| {
         let name = &packet.name;
         quote_spanned! { packet.span =>
-            Self :: #name ( inner ) => _serialize(inner, dst)?,
+            Self :: #name ( inner ) => _process(inner, ctx),
         }
-    });
+    }).collect::<Vec<_>>();
     ret_stream.extend(quote! {
-        impl #enum_name {
-            pub fn serialize_no_hdr(&self, dst: &mut Vec<u8>) -> Result<usize, crate::PayloadSerializeError> {
-                fn _serialize<E: ::bincode::enc::Encode>(data: &E, dst: &mut Vec<u8>) -> Result<usize, ::bincode::error::EncodeError> {
+        impl crate::Payload for #enum_name {
+            fn serialize_no_hdr(&self, dst: &mut Vec<u8>) -> Result<usize, crate::PayloadSerializeError> {
+                fn _process<E: ::bincode::enc::Encode>(data: &E, dst: &mut Vec<u8>) -> Result<usize, ::bincode::error::EncodeError> {
                     ::bincode::encode_into_std_write(data, dst, ::bincode::config::legacy())
                 }
 
+                let ctx = dst;
                 Ok(match self {
-                    Self::Unknown(inner) => _serialize(inner, dst)?,
+                    Self::Unknown(inner) => _process(inner, ctx),
                     #(#ser_match_arms)*
-                })
+                }?)
+            }
+
+            fn id(&self) -> u16 {
+                fn _process<T: crate::Payload>(inner: &T, ctx: ()) -> u16 {
+                    inner.id()
+                }
+
+                let ctx = ();
+                match self {
+                    Self::Unknown(inner) => inner.id(),
+                    #(#ser_match_arms)*
+                }
             }
         }
     });
 
-    let debug_match_arms = packets.iter().map(|packet| {
-        let name = &packet.name;
-        quote_spanned! { packet.span =>
-            Self :: #name ( inner ) => inner.fmt(f),
-        }
-    });
     ret_stream.extend(quote! {
         impl ::std::fmt::Debug for #enum_name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                fn _process<T: ::std::fmt::Debug>(inner: &T, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    inner.fmt(f)
+                }
+                let ctx = f;
                 match self {
-                    Self::Unknown(inner) => inner.fmt(f),
-                    #(#debug_match_arms)*
+                    Self::Unknown(inner) => inner.fmt(ctx),
+                    #(#ser_match_arms)*
                 }
             }
         }
     });
 
-    let payload_match_arms = packets.iter().map(|packet| {
-        let name = &packet.name;
-        quote_spanned! { packet.span =>
-            Self :: #name ( inner ) => inner.id(),
-        }
-    });
     ret_stream.extend(quote! {
-        impl crate::Payload for #enum_name {
-            fn id(&self) -> u16 {
-                match self {
-                    Self::Unknown(inner) => inner.id(),
-                    #(#payload_match_arms)*
-                }
-            }
-        }
-
         impl Default for #enum_name {
             fn default() -> Self {
-                unimplemented!();
+                unimplemented!("def");
             }
         }
 
@@ -307,13 +303,13 @@ pub fn packet_list(
                 &self,
                 encoder: &mut E,
             ) -> std::result::Result<(), ::bincode::error::EncodeError> {
-                unimplemented!();
+                unimplemented!("encode");
             }
         }
 
         impl ::bincode::Decode for #enum_name {
             fn decode<D: ::bincode::de::Decoder>(decoder: &mut D) -> std::result::Result<Self, ::bincode::error::DecodeError> {
-                unimplemented!();
+                unimplemented!("decode");
             }
         }
 

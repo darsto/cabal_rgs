@@ -30,7 +30,7 @@ impl<T, R> BorrowRegistry<T, R> {
         Some(borrow_ref)
     }
 
-    pub fn unregister(&self, borrow_ref: &Arc<BorrowRef<T, R>>) {
+    pub fn unregister(&self, borrow_ref: &BorrowRef<T, R>) {
         self.refs.remove(borrow_ref.idx);
     }
 }

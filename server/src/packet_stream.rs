@@ -181,6 +181,7 @@ pub enum Service {
     GlobalMgrSvr { id: u8 },
     ChatNode,
     RockNRoll,
+    Party,
 }
 
 impl<T: Unpin + AsyncRead> IPCPacketStream<T> {
@@ -251,6 +252,7 @@ impl Service {
             Self::GlobalMgrSvr { .. } => S::GlobalMgrSvr,
             Self::ChatNode => S::ChatNode,
             Self::RockNRoll => S::RockNRoll,
+            Self::Party => S::Party,
         }
     }
 }
@@ -270,6 +272,7 @@ impl From<Connect> for Service {
             S::GlobalMgrSvr => Self::GlobalMgrSvr { id: c.world_id },
             S::ChatNode => Self::ChatNode,
             S::RockNRoll => Self::RockNRoll,
+            S::Party => Self::Party,
         }
     }
 }
