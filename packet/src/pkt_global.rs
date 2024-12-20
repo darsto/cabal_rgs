@@ -229,15 +229,19 @@ pub struct DuplexRouteHeader {
     resp_channel_id: u8,  // 0x80?
     resp_server_id: u8,   // 0x1?
     resp_world_id: u8,   // 0?
-    resp_process_id: u8, // 0?
+    // also:
+    // resp_process_id: u8, // 0?
+    // but WorldSvr can send us a bugged 0x2b message with without it
 }
 
 #[packet(0x1a)]
 pub struct RoutePacket {
     droute_hdr: DuplexRouteHeader, // desired msg id non 0,
     // 0x17 - special handling, no server_id/group_id checked
-    data: BoundVec<0, u8>,
+    data: BoundVec<0, u8>, // the [`DuplexRouteHeader::resp_process_id`]
+                              // might be contained inside
 }
+assert_def_packet_size!(RoutePacket, 17);
 
 /// Wrapper to serialize given Payload under a different packet ID
 #[packet]
@@ -281,6 +285,7 @@ pub struct ChannelOptionSync {
 #[packet(0x17)]
 pub struct VerifyLinks {
     droute_hdr: DuplexRouteHeader,
+    resp_process_id: u8,
     auth_key: u32,
     user_id: u32,
     login_idx: u32,
@@ -306,6 +311,7 @@ assert_def_packet_size!(VerifyLinks, 424);
 #[packet(0x18)]
 pub struct VerifyLinksResult {
     droute_hdr: DuplexRouteHeader,
+    resp_process_id: u8,
     user_idx: u32, // 8?
     status: u8,    // 226?
 }

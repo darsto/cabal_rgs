@@ -121,7 +121,6 @@ impl GmsHandler {
                     resp_channel_id: p.droute_hdr.route_hdr.channel_id,
                     resp_server_id: p.droute_hdr.route_hdr.server_id,
                     resp_world_id: 0xc, // ?? p.droute_hdr.route_hdr.world_id,
-                    resp_process_id: p.droute_hdr.route_hdr.process_id,
                 };
 
                 let user_conn = user_conn.clone();
@@ -149,6 +148,7 @@ impl GmsHandler {
                         id: RoutePacket::ID,
                         data: VerifyLinksResult {
                             droute_hdr: gms_response_hdr,
+                            resp_process_id: 0,
                             user_idx: user_idx as _,
                             status: if user_auth_key.is_some() { 1 } else { 0 },
                         },
