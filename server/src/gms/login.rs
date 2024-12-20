@@ -138,7 +138,6 @@ impl GlobalLoginHandler {
         // Tell each WorldSvr about the other channels
         // (perhaps for the "Switch Channel" functionality?)
         let world_srv_state = WorldServerState {
-            unk1: 1, // FIXME: server id
             groups: groups.clone().into(),
         };
 

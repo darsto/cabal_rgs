@@ -151,8 +151,7 @@ pub struct LoginServerState {
 
 #[packet(0x35)]
 pub struct WorldServerState {
-    unk1: u8, // 1 - server id?
-    groups: BoundVec<0, GroupNode>,
+    groups: BoundVec<1, GroupNode>,
 }
 
 #[packet]
