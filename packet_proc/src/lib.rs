@@ -134,7 +134,7 @@ struct Packet {
 impl syn::parse::Parse for PathAttribute {
     fn parse(input: syn::parse::ParseStream) -> syn::parse::Result<Self> {
         let name = input.parse::<syn::Ident>()?;
-        if name.to_string() != "path" {
+        if name != "path" {
             return Err(syn::parse::Error::new_spanned(name, "Unknown attribute"));
         }
         input.parse::<syn::Token![=]>()?;
@@ -211,32 +211,22 @@ pub fn packet_list(
         let name = &packet.name;
         let path = &packet.path;
         quote_spanned! { packet.span =>
-            #path :: ID => Self :: #name ( _deserialize::<#path>(data, &mut len)? ),
+            #path :: ID => Self :: #name ( _deserialize::<#path>(data)? ),
         }
     });
     ret_stream.extend(quote! {
         impl #enum_name {
             pub fn deserialize_no_hdr(id: u16, data: &[u8]) -> Result<Self, crate::PayloadDeserializeError> {
-                fn _deserialize<D: ::bincode::de::Decode>(data: &[u8], len_p: &mut usize) -> Result<D, crate::PayloadDeserializeError> {
-                    let (obj, len) = ::bincode::decode_from_slice::<D, _>(data, ::bincode::config::legacy())?;
-                    *len_p = len;
-                    Ok(obj)
+                fn _deserialize<P: crate::Payload>(data: &[u8]) -> Result<P, crate::PayloadDeserializeError> {
+                    P::deserialize_no_hdr(data)
                 }
 
-                let mut len = 0;
-                let obj = match id {
+                Ok(match id {
                     #(#deser_match_arms)*
                     _ => {
-                        Self::Unknown(Unknown { id, data: _deserialize::<crate::pkt_common::UnknownPayload>(data, &mut len)? })
+                        Self::Unknown(Unknown { id, data: data.into() })
                     }
-                };
-                if len != data.len() {
-                    return Err(crate::PayloadDeserializeError::PacketTooLong {
-                        len: data.len() as u16,
-                        parsed: len as u16,
-                    });
-                }
-                Ok(obj)
+                })
             }
         }
     });
@@ -250,8 +240,8 @@ pub fn packet_list(
     ret_stream.extend(quote! {
         impl crate::Payload for #enum_name {
             fn serialize_no_hdr(&self, dst: &mut Vec<u8>) -> Result<usize, crate::PayloadSerializeError> {
-                fn _process<E: ::bincode::enc::Encode>(data: &E, dst: &mut Vec<u8>) -> Result<usize, ::bincode::error::EncodeError> {
-                    ::bincode::encode_into_std_write(data, dst, ::bincode::config::legacy())
+                fn _process<P: crate::Payload>(data: &P, dst: &mut Vec<u8>) -> Result<usize, crate::PayloadSerializeError> {
+                    data.serialize_no_hdr(dst)
                 }
 
                 let ctx = dst;
