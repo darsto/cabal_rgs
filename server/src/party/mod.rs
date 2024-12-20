@@ -169,7 +169,8 @@ impl Listener {
 
                 // TODO process to_remove, send messages to appropriate WorldSvrs
             }
-        }).detach();
+        })
+        .detach();
     }
 }
 
@@ -258,46 +259,46 @@ impl WorldConnection {
                     self.stream.send(&p).await?;
                 }
                 Packet::PartyInviteResult(p) => {
-                    let party_stats = {
-                        let server = server_guard!();
-                        server.state.get_character(p.invitee_id).map(|c| {
-                            c.data.level = p.invitee_level;
-                        });
-                        match p.accepted {
-                            1 => server
-                                .state
-                                .add_to_party(p.inviter_id, p.invitee_id)
-                                .map(|party| PartyStats {
-                                    tgt_char_id: 0,
-                                    party_id: party.id,
-                                    leader_id: party.leader_id,
-                                    unk2: [0; 5],
-                                    unk4: 1,
-                                    unk5: 1,
-                                    chars: party
-                                        .players
-                                        .into_iter()
-                                        .filter_map(|id| {
-                                            let p = server.state.get_character(id)?;
-                                            Some(PartyCharacterStat {
-                                                id: p.data.char_id,
-                                                level: p.data.level,
-                                                unk8: 0,
-                                                unk9: 1,
-                                                class: p.data.class,
-                                                unk11: 1,
-                                                name_len: p.data.name_len,
-                                                name: p.data.name.clone(),
-                                                unk12: 0,
+                    let party_stats =
+                        {
+                            let server = server_guard!();
+                            server.state.get_character(p.invitee_id).map(|c| {
+                                c.data.level = p.invitee_level;
+                            });
+                            match p.accepted {
+                                1 => server.state.add_to_party(p.inviter_id, p.invitee_id).map(
+                                    |party| PartyStats {
+                                        tgt_char_id: 0,
+                                        party_id: party.id,
+                                        leader_id: party.leader_id,
+                                        unk2: [0; 5],
+                                        unk4: 1,
+                                        unk5: 1,
+                                        chars: party
+                                            .players
+                                            .into_iter()
+                                            .filter_map(|id| {
+                                                let p = server.state.get_character(id)?;
+                                                Some(PartyCharacterStat {
+                                                    id: p.data.char_id,
+                                                    level: p.data.level,
+                                                    unk8: 0,
+                                                    unk9: 1,
+                                                    class: p.data.class,
+                                                    unk11: 1,
+                                                    name_len: p.data.name_len,
+                                                    name: p.data.name.clone(),
+                                                    unk12: 0,
+                                                })
                                             })
-                                        })
-                                        .collect::<Vec<_>>()
-                                        .into(),
-                                    padding: Default::default(),
-                                }),
-                            _ => None,
-                        }
-                    };
+                                            .collect::<Vec<_>>()
+                                            .into(),
+                                        padding: Default::default(),
+                                    },
+                                ),
+                                _ => None,
+                            }
+                        };
 
                     let accepted = party_stats.is_some();
                     self.stream

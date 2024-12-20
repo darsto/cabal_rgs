@@ -41,13 +41,13 @@ impl Header {
         if dst.len() < expected_num_bytes {
             return Err(EncodeError::UnexpectedEnd);
         }
-        (&mut dst[0..2]).copy_from_slice(&Self::MAGIC.to_le_bytes());
-        (&mut dst[2..4]).copy_from_slice(&self.len.to_le_bytes());
+        dst[0..2].copy_from_slice(&Self::MAGIC.to_le_bytes());
+        dst[2..4].copy_from_slice(&self.len.to_le_bytes());
         if self.serialize_checksum {
-            (&mut dst[4..8]).copy_from_slice(&self.checksum.to_le_bytes());
-            (&mut dst[8..10]).copy_from_slice(&self.id.to_le_bytes());
+            dst[4..8].copy_from_slice(&self.checksum.to_le_bytes());
+            dst[8..10].copy_from_slice(&self.id.to_le_bytes());
         } else {
-            (&mut dst[4..6]).copy_from_slice(&self.id.to_le_bytes());
+            dst[4..6].copy_from_slice(&self.id.to_le_bytes());
         }
         Ok(expected_num_bytes)
     }
@@ -180,7 +180,7 @@ pub trait Payload:
             .unwrap()
             .try_into()
             .map_err(|_| PayloadSerializeError::PayloadTooLong {
-                payload_len: payload_len as usize,
+                payload_len,
             })?;
         let hdr = Header::new(self.id(), len, serialize_checksum);
         hdr.serialize(&mut dst[0..hdr_len])?;

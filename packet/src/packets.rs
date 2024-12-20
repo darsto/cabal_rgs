@@ -121,7 +121,7 @@ impl Packet {
             .unwrap()
             .try_into()
             .map_err(|_| crate::PayloadSerializeError::PayloadTooLong {
-                payload_len: payload_len as usize,
+                payload_len,
             })?;
         let hdr = Header::new(self.id(), len, serialize_checksum);
         hdr.serialize(&mut dst[0..hdr_len]).unwrap();

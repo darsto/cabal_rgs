@@ -1,4 +1,7 @@
-use std::{collections::{hash_map::Entry, HashMap}, time::Instant};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    time::Instant,
+};
 
 use crossbeam_queue::ArrayQueue;
 use packet::pkt_party::ClientConnect;
@@ -22,7 +25,6 @@ pub struct Party {
     pub players: Vec<u32>,
 }
 
-
 impl State {
     pub fn new() -> Self {
         Self {
@@ -31,7 +33,7 @@ impl State {
         }
     }
 
-    pub fn add_character(&mut self, channel: u8, data: ClientConnect){
+    pub fn add_character(&mut self, channel: u8, data: ClientConnect) {
         match self.chars.entry(data.char_id) {
             Entry::Vacant(e) => {
                 e.insert(CharacterState {
@@ -61,13 +63,14 @@ impl State {
         let inviter = self.chars.get_mut(&inviter_id)?;
         let party = match inviter.party {
             None => {
-                let party = self.parties.new_party(inviter.data.char_id, invitee_id).unwrap();
+                let party = self
+                    .parties
+                    .new_party(inviter.data.char_id, invitee_id)
+                    .unwrap();
                 inviter.party = Some(party.id);
                 party
             }
-            Some(party_id) => {
-                self.parties.get_mut(party_id).unwrap()
-            }
+            Some(party_id) => self.parties.get_mut(party_id).unwrap(),
         };
 
         let party = party.clone();
@@ -88,18 +91,18 @@ impl State {
         let char = self.chars.get_mut(&char_id)?;
         let party_id = char.party?;
         char.party = None;
-        self.parties.remove_from_party(party_id, char_id).map(|state| {
-            (party_id, state)
-        })
+        self.parties
+            .remove_from_party(party_id, char_id)
+            .map(|state| (party_id, state))
     }
 
     // Can happen due to timeout after being offline for too long
     pub fn remove_character(&mut self, char_id: u32) -> Option<(u32, PartyState)> {
         let char = self.chars.remove(&char_id)?;
         let party_id = char.party?;
-        self.parties.remove_from_party(party_id, char_id).map(|state| {
-            (party_id, state)
-        })
+        self.parties
+            .remove_from_party(party_id, char_id)
+            .map(|state| (party_id, state))
     }
 }
 
@@ -162,7 +165,5 @@ impl PartyMap {
 
 pub enum PartyState {
     Normal,
-    Disbanded {
-        last_player_idx: Option<u32>
-    },
+    Disbanded { last_player_idx: Option<u32> },
 }

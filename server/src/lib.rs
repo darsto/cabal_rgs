@@ -15,10 +15,10 @@ pub mod event;
 pub mod gms;
 #[cfg(feature = "login")]
 pub mod login;
-#[cfg(feature = "proxy")]
-pub mod proxy;
 #[cfg(feature = "party")]
 pub mod party;
+#[cfg(feature = "proxy")]
+pub mod proxy;
 
 use log::LevelFilter;
 
