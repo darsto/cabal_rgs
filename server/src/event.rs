@@ -101,7 +101,7 @@ impl Connection {
             .send(&packet::pkt_event::ConnectAck {
                 unk1: 0x0,
                 unk2: [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00],
-                world_id: other_conn.world_id,
+                world_id: other_conn.server_id,
                 channel_id: other_conn.channel_id,
                 unk3: 0x0,
                 unk4: 0x1,

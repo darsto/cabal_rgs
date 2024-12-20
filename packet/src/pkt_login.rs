@@ -124,9 +124,9 @@ pub enum SystemMessageType {
 #[packet(0x66)]
 pub struct C2SVerifyLinks {
     unk1: u32, // some key, 0x4350
-    unique_idx: u16, // 0 ?? some unknown user idx
-    server_id: u8, // 1
-    group_id: u8, // 1
+    unique_idx: u16,
+    channel_id: u8,
+    server_id: u8,
     magic_key: u32
 }
 assert_def_packet_size!(C2SVerifyLinks, 12);

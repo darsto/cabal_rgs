@@ -52,7 +52,7 @@ impl GlobalAgentShopHandler {
                 bytes: BoundVec(vec![
                     0xff, 0xff, 0xff, 0x7f, 0, 0xff, 0, 0xff,
                     ServiceID::GlobalMgrSvr as u8, 0, 0, 0, 0,
-                    service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
+                    service.server_id, service.channel_id, 0, 0, 0, 0, 0x1,
                 ]),
             })
             .await.unwrap();

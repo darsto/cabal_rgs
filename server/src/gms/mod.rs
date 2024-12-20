@@ -196,16 +196,17 @@ pub async fn handle_route_packet(
     let mut target_stream = {
         // original GMS routes IDs 1,1 to WorldSvr1,channel1, not ChatNode or AgentShop
         // I yet have to see a packet routed to ChatNode/AgentShop to see how it's done
-
-        if route_hdr.server_id == login_route.world_id
-            && route_hdr.group_id == login_route.channel_id
+        // And yes, LoginSvr route is switched up, it's found by server 1, channel 0x80,
+        // despite the Connect packet saying the opposite
+        if route_hdr.channel_id == login_route.server_id
+            && route_hdr.server_id == login_route.channel_id
         {
             let login_ref = &listener.login;
             BorrowGuardArmed::map(login_ref.borrow().await.unwrap(), |m| &mut m.stream)
         } else {
             let world_ref = worlds.iter().find(|conn_ref| {
                 let s = &conn_ref.data;
-                s.world_id == route_hdr.server_id && s.channel_id == route_hdr.group_id
+                s.server_id == route_hdr.channel_id && s.channel_id == route_hdr.server_id
             });
 
             let Some(world_ref) = world_ref else {

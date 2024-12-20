@@ -262,14 +262,14 @@ impl From<Connect> for Service {
         use ServiceID as S;
         match c.service {
             S::WorldSvr => Self::WorldSvr {
-                server: c.world_id,
+                server: c.server_id,
                 channel: c.channel_id,
             },
             S::LoginSvr => Self::LoginSvr,
             S::DBAgent => Self::DBAgent,
             S::AgentShop => Self::AgentShop,
             S::EventMgr => Self::EventMgr,
-            S::GlobalMgrSvr => Self::GlobalMgrSvr { id: c.world_id },
+            S::GlobalMgrSvr => Self::GlobalMgrSvr { id: c.server_id },
             S::ChatNode => Self::ChatNode,
             S::RockNRoll => Self::RockNRoll,
             S::Party => Self::Party,
@@ -284,25 +284,25 @@ impl From<Service> for Connect {
         match e {
             E::WorldSvr { server, channel } => Connect {
                 service,
-                world_id: server,
+                server_id: server,
                 channel_id: channel,
                 unk2: 0,
             },
             E::GlobalMgrSvr { id } => Connect {
                 service,
-                world_id: id,
+                server_id: id,
                 channel_id: 0,
                 unk2: 0,
             },
             E::LoginSvr => Connect {
                 service,
-                world_id: 0x80,
+                server_id: 0x80,
                 channel_id: 0x1,
                 unk2: 0,
             },
             _ => Connect {
                 service,
-                world_id: 0,
+                server_id: 0,
                 channel_id: 0,
                 unk2: 0,
             },

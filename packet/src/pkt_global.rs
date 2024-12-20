@@ -65,8 +65,8 @@ assert_def_packet_size!(AdditionalDungeonInstanceCount, 8);
 #[packet]
 pub struct RouteHeader {
     origin_main_cmd: u16,
+    channel_id: u8,
     server_id: u8,
-    group_id: u8,
     world_id: u8,
     process_id: u8, // ?? 0?
 }
@@ -227,8 +227,8 @@ pub struct DuplexRouteHeader {
     unique_idx: u32,     // 2? 6?
     to_idx: u16,         // 0?
     fm_idx: u16,         // 0? 4?
-    resp_server_id: u8,  // 0x80?
-    resp_group_id: u8,   // 0x1?
+    resp_channel_id: u8,  // 0x80?
+    resp_server_id: u8,   // 0x1?
     resp_world_id: u8,   // 0?
     resp_process_id: u8, // 0?
 }

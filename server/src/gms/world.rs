@@ -69,14 +69,14 @@ impl GlobalWorldHandler {
                 bytes: BoundVec(vec![
                     0x50, 0, 0, 0, 0, 0, 0, 0,
                     ServiceID::GlobalMgrSvr as u8, 0, 0, 0, 0,
-                    service.world_id, service.channel_id, 0, 0, 0, 0, 0x1,
+                    service.server_id, service.channel_id, 0, 0, 0, 0, 0x1,
                 ]),
             })
             .await.unwrap();
 
         self.stream
             .send(&ChangeChannelType {
-                server_id: service.world_id,
+                server_id: service.server_id,
                 channel_id: service.channel_id,
                 state: self.state,
             })

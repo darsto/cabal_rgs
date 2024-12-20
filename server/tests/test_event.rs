@@ -59,7 +59,7 @@ async fn start_client_test() {
         [0x00, 0xff, 0x00, 0xff, 0xf5, 0x00, 0x00, 0x00, 0x00]
     );
     let self_id = Connect::from(conn.self_id);
-    assert_eq!(ack.world_id, self_id.world_id);
+    assert_eq!(ack.world_id, self_id.server_id);
     assert_eq!(ack.channel_id, self_id.channel_id);
     assert_eq!(ack.unk3, 0x0);
     assert_eq!(ack.unk4, 0x1);
