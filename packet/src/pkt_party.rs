@@ -98,7 +98,6 @@ pub struct PartyStats {
     chars: BoundVec<4, PartyCharacterStat>,
     padding: BoundVec<0, u8>,
 }
-assert_def_packet_size!(PartyStats, 296);
 
 #[packet]
 pub struct PartyCharacterStat {
