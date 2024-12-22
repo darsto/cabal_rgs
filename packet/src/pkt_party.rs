@@ -18,9 +18,9 @@ assert_def_packet_size!(ConnectAck, 20);
 
 #[packet(0xbce)]
 pub struct ClientConnect {
-    char_id: u32, // 0x18?
+    char_id: u32,    // 0x18?
     channel_id: u32, // ?? 1
-    unk3: u8, // 0 maybe gender?
+    unk3: u8,        // 0 maybe gender?
     class: u8,
     level: u32, // 0xc8
     name_len: u8,
@@ -51,11 +51,11 @@ assert_def_packet_size!(PartyInvite, 55);
 
 #[packet(0xbbc)]
 pub struct PartyInviteAck {
-    inviter_id: u32, // 8
+    inviter_id: u32,        // 8
     inviter_channel_id: u8, // 1
     invitee_id: u32,
     invitee_channel_id: u8, // 1
-    invitee_class: u8, // 2, 4
+    invitee_class: u8,      // 2, 4
     invitee_level: u32,
     invitee_name_len: u8,
     invitee_name: [u8; 16],
@@ -68,14 +68,14 @@ assert_def_packet_size!(PartyInviteAck, 33);
 pub struct PartyInviteResult {
     inviter_id: u32,
     inviter_channel_id: u8, // 1
-    accepted: u32, // 1 accept, 0 reject
+    accepted: u32,          // 1 accept, 0 reject
     invitee_id: u32,
     invitee_channel_id: u8, // 1
-    invitee_class: u8, // 2, 4, ??
-    unk5: u8, // 0
+    invitee_class: u8,      // 2, 4, ??
+    unk5: u8,               // 0
     invitee_level: u32,
     invitee_name_len: u8,
-    invitee_name: [u8; 16]
+    invitee_name: [u8; 16],
 }
 assert_def_packet_size!(PartyInviteResult, 37);
 // ^ response: 0xbbe + same pkt (+ 2x 0xbbf ?)
@@ -83,18 +83,18 @@ assert_def_packet_size!(PartyInviteResult, 37);
 #[packet(0xbbe)]
 pub struct PartyInviteResultAck {
     invitee_id: u32, // 0x18
-    accepted: u8, // 1 accept, 0 reject
-    unk1: u8, // ?? 0 accept, 1 on reject
+    accepted: u8,    // 1 accept, 0 reject
+    unk1: u8,        // ?? 0 accept, 1 on reject
 }
 
 #[packet(0xbbf)]
 pub struct PartyStats {
     tgt_char_id: u32, // sent to this party player
-    party_id: u32, // 1, 2
+    party_id: u32,    // 1, 2
     leader_id: u32,
     unk2: [u8; 5], // 0
-    unk4: u8, // 1
-    unk5: u8, // 1
+    unk4: u8,      // 1
+    unk5: u8,      // 1
     chars: BoundVec<4, PartyCharacterStat>,
     padding: BoundVec<0, u8>,
 }
@@ -104,9 +104,9 @@ assert_def_packet_size!(PartyStats, 296);
 pub struct PartyCharacterStat {
     id: u32, // ??
     level: u32,
-    unk8: u32, // 0
-    unk9: u8, // 1
-    class: u8, // 3, 6, class?
+    unk8: u32,  // 0
+    unk9: u8,   // 1
+    class: u8,  // 3, 6, class?
     unk11: u32, // 1
     name_len: u8,
     name: [u8; 16],

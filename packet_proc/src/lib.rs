@@ -231,12 +231,15 @@ pub fn packet_list(
         }
     });
 
-    let ser_match_arms = packets.iter().map(|packet| {
-        let name = &packet.name;
-        quote_spanned! { packet.span =>
-            Self :: #name ( inner ) => _process(inner, ctx),
-        }
-    }).collect::<Vec<_>>();
+    let ser_match_arms = packets
+        .iter()
+        .map(|packet| {
+            let name = &packet.name;
+            quote_spanned! { packet.span =>
+                Self :: #name ( inner ) => _process(inner, ctx),
+            }
+        })
+        .collect::<Vec<_>>();
     ret_stream.extend(quote! {
         impl crate::Payload for #enum_name {
             fn serialize_no_hdr(&self, dst: &mut Vec<u8>) -> Result<usize, crate::PayloadSerializeError> {

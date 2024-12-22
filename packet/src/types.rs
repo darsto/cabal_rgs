@@ -179,9 +179,7 @@ pub trait Payload:
             .checked_add(hdr_len)
             .unwrap()
             .try_into()
-            .map_err(|_| PayloadSerializeError::PayloadTooLong {
-                payload_len,
-            })?;
+            .map_err(|_| PayloadSerializeError::PayloadTooLong { payload_len })?;
         let hdr = Header::new(self.id(), len, serialize_checksum);
         hdr.serialize(&mut dst[0..hdr_len])?;
         Ok(len as usize)

@@ -75,18 +75,18 @@ assert_def_packet_size!(C2SAuthAccount, 258);
 
 #[packet(0x67)]
 pub struct S2CAuthAccount {
-    status: u8,      // 0x20
-    user_id: u32,     // ?? 1
-    unk2: u8, // 1
-    unk3: u8, // 2f ?? age => when 0, "only users that are age 18 or older can join the server"
+    status: u8,   // 0x20
+    user_id: u32, // ?? 1
+    unk2: u8,     // 1
+    unk3: u8,     // 2f ?? age => when 0, "only users that are age 18 or older can join the server"
     char_count: u8,
-    unk4: u64, // 0
-    premium_service_type: u32,     //  5
-    premium_expire_time: u32,     // 0x783f81eb
+    unk4: u64,                 // 0
+    premium_service_type: u32, //  5
+    premium_expire_time: u32,  // 0x783f81eb
     unk7: u8,
     sub_password_exists: u64,
     language: u32,
-    unkkey: Arr<u8, 33>,     // string? always null terminated
+    unkkey: Arr<u8, 33>,         // string? always null terminated
     characters: BoundVec<0, u8>, // u8 pairs of (server_id, char_id) on successfull login, or [0]
 }
 assert_def_packet_size!(S2CAuthAccount, 70);
@@ -127,7 +127,7 @@ pub struct C2SVerifyLinks {
     unique_idx: u16,
     channel_id: u8,
     server_id: u8,
-    magic_key: u32
+    magic_key: u32,
 }
 assert_def_packet_size!(C2SVerifyLinks, 12);
 
@@ -153,14 +153,14 @@ assert_def_packet_size!(RequestAuthAccount, 139);
 
 #[packet(0x1f)]
 pub struct ResponseAuthAccount {
-    server_id: u8,  // 0x80?
-    channel_id: u8, // 1?
-    db_user_idx: u16,  // idx inside db agent; for VerifyLinks message
+    server_id: u8,    // 0x80?
+    channel_id: u8,   // 1?
+    db_user_idx: u16, // idx inside db agent; for VerifyLinks message
     ip: [u8; 4],
     username: Arr<u8, 33>,
-    user_id: u32, // 1?
+    user_id: u32,           // 1?
     login_idx_existing: u8, // 0; 1 when result 0x22
-    result: u8,    // 0x20 - ok
+    result: u8,             // 0x20 - ok
     /*
     0x20 - ok
     0x21 - failed
@@ -180,29 +180,29 @@ pub struct ResponseAuthAccount {
      */
     resident_num: u32,          // d0 bf 0b 0 ??
     unk5: u32,                  // 0
-    premium_service_type: u32,          // 5
+    premium_service_type: u32,  // 5
     premium_expire_time: u32,   // eb 81 3f 78
     pcbang_remaining_time: u32, // 0?
     unkkey: Arr<u8, 33>,
-    unk9: u8,               // 0
-    pcpoint: u32,           // 0
-    unk10: u8,              // 1
-    unk11: u8,              // 0
-    unk12: u32,             // 1
-    unk13: u32,             // 0
-    unk14: u32,             // 0
-    unk15: u32,             // 0
-    unk16: u32,             // 0
-    unk17: u8,              // 0
-    unk18: Arr<u8, 32>,     // 0?
-    unk19: u8,              // 0
-    unk20: u32,             // 0
-    unk21: u32,             // 0xa5e - some counter
-    unk22: u32,             // 0x477a7190
-    unk23: u32,             // 0
-    unk24: u32,             // 0x477a7190
-    unk25: u32,             // 0
-    login_idx: u32,         // total login count
+    unk9: u8,                    // 0
+    pcpoint: u32,                // 0
+    unk10: u8,                   // 1
+    unk11: u8,                   // 0
+    unk12: u32,                  // 1
+    unk13: u32,                  // 0
+    unk14: u32,                  // 0
+    unk15: u32,                  // 0
+    unk16: u32,                  // 0
+    unk17: u8,                   // 0
+    unk18: Arr<u8, 32>,          // 0?
+    unk19: u8,                   // 0
+    unk20: u32,                  // 0
+    unk21: u32,                  // 0xa5e - some counter
+    unk22: u32,                  // 0x477a7190
+    unk23: u32,                  // 0
+    unk24: u32,                  // 0x477a7190
+    unk25: u32,                  // 0
+    login_idx: u32,              // total login count
     characters: BoundVec<0, u8>, // i.e. [1, 3] on successful login (server idx1, character idx3), or [0]
 }
 assert_def_packet_size!(ResponseAuthAccount, 189);
