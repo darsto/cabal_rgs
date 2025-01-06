@@ -110,6 +110,6 @@ impl<T, R> BorrowRef<T, R> {
     }
 
     pub async fn borrow(&self) -> Result<BorrowGuardArmed<'_, T>, borrow_mutex::Error> {
-        self.borrower.request_borrow().await
+        self.borrower.try_borrow().await
     }
 }
