@@ -8,12 +8,14 @@ use clap::{Parser, Subcommand};
 /// Cabal Online Replacement Services
 ///
 /// You can run this as a single specific --service, or any combination of
-/// them with multiple --service arguments.
+/// them with multiple --service arguments. If a service expects additional
+/// options, you can specify them immediately after --service.
 #[derive(Parser, Debug)]
 #[clap(bin_name = format!("{} --service", bin_name()))]
 #[clap(version, about, long_about, verbatim_doc_comment)]
 #[clap(flatten_help = true)]
 #[clap(disable_help_subcommand = true)]
+#[clap(override_usage = format!("{} [OPTIONS] -s|--service <SERVICE1> -s|--service <SERVICE2>", bin_name()))]
 struct Args {
     #[clap(subcommand)]
     service: Service,

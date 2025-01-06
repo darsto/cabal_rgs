@@ -17,6 +17,7 @@ use std::{net::TcpListener, sync::Arc};
 use anyhow::Result;
 use smol::Async;
 
+/// EventMgr replacement
 #[derive(Args, Debug)]
 #[command(about, long_about, verbatim_doc_comment, disable_help_flag = true)]
 pub struct EventArgs {}

@@ -21,6 +21,7 @@ use std::{net::TcpListener, sync::Arc};
 use anyhow::{bail, Context, Result};
 use smol::Async;
 
+/// RockAndRoll replacement
 #[derive(Args, Debug)]
 #[command(about, long_about, verbatim_doc_comment, disable_help_flag = true)]
 pub struct CryptoArgs {}

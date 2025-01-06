@@ -26,6 +26,8 @@ pub struct ProxyArgs {
     pub upstream_port: u16,
     #[clap(long = "downstream-port", visible_alias = "dp")]
     pub downstream_port: u16,
+    #[clap(hide = true, long, short, action = clap::ArgAction::Help)]
+    help: Option<bool>,
 }
 
 pub struct Listener {
