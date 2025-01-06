@@ -10,12 +10,12 @@ use clap::{Parser, Subcommand};
 /// You can run this as a single specific --service, or any combination of
 /// them with multiple --service arguments.
 #[derive(Parser, Debug)]
-#[command(bin_name = format!("{} --service", bin_name()))]
-#[command(version, about, long_about, verbatim_doc_comment)]
-#[command(flatten_help = true)]
-#[command(disable_help_subcommand = true)]
+#[clap(bin_name = format!("{} --service", bin_name()))]
+#[clap(version, about, long_about, verbatim_doc_comment)]
+#[clap(flatten_help = true)]
+#[clap(disable_help_subcommand = true)]
 struct Args {
-    #[command(subcommand)]
+    #[clap(subcommand)]
     service: Service,
     #[clap(flatten)]
     common: CommonConfig,
@@ -41,7 +41,7 @@ pub enum Service {
 /// Common (non-service-specific) configuration
 #[derive(Parser, Debug, Default)]
 pub struct CommonConfig {
-    #[clap(default_value = ".")]
+    #[arg(default_value = ".")]
     #[arg(short = 'r', long)]
     pub resources_dir: PathBuf,
 }
@@ -100,9 +100,8 @@ pub fn parse_from(args: &[String]) -> Config {
             } else {
                 // this is the first -s we see, so parse the previous args
                 // as common, generic args
-                let full_cfg =
-                    Args::parse_from(args.iter().take(idx).chain(["event".into()].iter()));
-                common_cfg = Some(full_cfg.common);
+                let cfg = CommonConfig::parse_from(args.iter().take(idx));
+                common_cfg = Some(cfg);
             }
 
             cur_service_start_idx = Some(idx + 1);
