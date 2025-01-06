@@ -20,7 +20,7 @@ use smol::Async;
 /// All packets are dumped to stdout. The ones that are known are pretty
 /// printed.
 #[derive(Args, Debug, Default)]
-#[command(about, long_about, verbatim_doc_comment)]
+#[command(about, long_about, verbatim_doc_comment, disable_help_flag = true)]
 pub struct ProxyArgs {
     #[clap(long = "upstream-port", visible_alias = "up")]
     pub upstream_port: u16,

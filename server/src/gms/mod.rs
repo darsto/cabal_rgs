@@ -34,7 +34,7 @@ use db::*;
 
 /// GlobalMgrSvr replacement
 #[derive(Args, Debug, Default)]
-#[command(about, long_about, verbatim_doc_comment)]
+#[command(about, long_about, verbatim_doc_comment, disable_help_flag = true)]
 pub struct GmsArgs {}
 
 pub struct Listener {

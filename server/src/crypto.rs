@@ -22,6 +22,7 @@ use anyhow::{bail, Context, Result};
 use smol::Async;
 
 #[derive(Args, Debug)]
+#[command(about, long_about, verbatim_doc_comment, disable_help_flag = true)]
 pub struct CryptoArgs {}
 
 pub struct Listener {

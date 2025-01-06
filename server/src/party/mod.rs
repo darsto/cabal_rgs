@@ -24,7 +24,9 @@ use smol::{Async, Timer};
 
 mod state;
 
+/// PartySvr replacement
 #[derive(Args, Debug)]
+#[command(about, long_about, verbatim_doc_comment, disable_help_flag = true)]
 pub struct PartyArgs {}
 
 // The gist of a party server is to keep state of all players on
