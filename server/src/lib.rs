@@ -42,7 +42,7 @@ pub mod executor {
     use smol::{LocalExecutor, Task};
 
     thread_local! {
-        static ASYNC_EX: LocalExecutor<'static> = LocalExecutor::new();
+        static ASYNC_EX: LocalExecutor<'static> = const { LocalExecutor::new() };
     }
 
     pub fn spawn_local<F: Future<Output = T> + 'static, T: 'static>(future: F) -> Task<T> {
@@ -52,21 +52,4 @@ pub mod executor {
     pub fn run_until<F: Future<Output = T> + 'static, T: 'static + Send>(future: F) -> T {
         ASYNC_EX.with(|ex| futures::executor::block_on(ex.run(future)))
     }
-}
-
-/// Hopefuly we'll see async for loops in stable rust one day
-#[macro_export]
-macro_rules! async_for_each {
-    ($item:ident in $iter:expr => $b:block) => {
-        {
-            let mut iter = core::pin::pin!($iter);
-            while let Some($item) = iter.next().await $b
-        }
-    };
-    (mut $item:ident in $iter:expr => $b:block) => {
-        {
-            let mut iter = core::pin::pin!($iter);
-            while let Some(mut $item) = iter.next().await $b
-        }
-    };
 }
