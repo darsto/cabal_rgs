@@ -60,7 +60,7 @@ impl Listener {
                     listener,
                     conn_ref,
                 };
-                let id = conn.stream.other_id.clone();
+                let id = conn.stream.other_id;
 
                 info!("Listener: {id} connected");
                 if let Err(err) = conn.handle().await {

@@ -5,7 +5,7 @@ use crate::executor;
 use crate::packet_stream::{PacketStream, StreamConfig};
 use clap::Args;
 use futures::{AsyncRead, AsyncReadExt, AsyncWrite};
-use log::{error, info, trace};
+use log::{error, info};
 
 use std::fmt::Display;
 use std::net::TcpStream;

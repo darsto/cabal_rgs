@@ -35,7 +35,7 @@ pub struct Listener {
     tcp_listener: Async<TcpListener>,
     worlds: BorrowRegistry<WorldConnection, ()>,
     servers: LockedVec<Server>,
-    args: Arc<crate::args::Config>,
+    _args: Arc<crate::args::Config>,
 }
 
 struct Server {
@@ -54,7 +54,7 @@ impl Listener {
             tcp_listener,
             worlds: BorrowRegistry::new(128),
             servers: LockedVec::with_capacity(1),
-            args: args.clone(),
+            _args: args.clone(),
         })
     }
 
@@ -79,8 +79,8 @@ impl Listener {
                     .await
                     .unwrap();
 
-                let id = stream.other_id.clone();
-                let Service::WorldSvr { server, channel } = id.clone() else {
+                let id = stream.other_id;
+                let Service::WorldSvr { server, channel } = id else {
                     error!("Listener: expected WorldSvr connection, got {id}. Closing");
                     listener.worlds.unregister(&conn_ref);
                     return;
@@ -239,7 +239,7 @@ impl WorldConnection {
                     server_guard!().state.add_character(self.channel, p);
                     self.stream
                         .send(&ClientConnect {
-                            char_id: char_id,
+                            char_id,
                             padding: vec![0u8; 370].into(),
                             ..Default::default()
                         })
@@ -262,9 +262,9 @@ impl WorldConnection {
                     let party_stats =
                         {
                             let server = server_guard!();
-                            server.state.get_character(p.invitee_id).map(|c| {
+                            if let Some(c) = server.state.get_character(p.invitee_id) {
                                 c.data.level = p.invitee_level;
-                            });
+                            }
                             match p.accepted {
                                 1 => server.state.add_to_party(p.inviter_id, p.invitee_id).map(
                                     |party| PartyStats {
@@ -287,7 +287,7 @@ impl WorldConnection {
                                                     class: p.data.class,
                                                     unk11: 1,
                                                     name_len: p.data.name_len,
-                                                    name: p.data.name.clone(),
+                                                    name: p.data.name,
                                                     unk12: 0,
                                                 })
                                             })

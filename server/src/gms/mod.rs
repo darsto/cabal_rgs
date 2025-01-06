@@ -97,7 +97,7 @@ impl Listener {
                 let stream = IPCPacketStream::from_host(Service::GlobalMgrSvr { id: 0x80 }, stream)
                     .await
                     .unwrap();
-                let id = stream.other_id.clone();
+                let id = stream.other_id;
 
                 info!("Listener: {id} connected");
                 if let Err(err) = listener.handle_new_conn(stream).await {

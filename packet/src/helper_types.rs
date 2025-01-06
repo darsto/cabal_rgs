@@ -201,7 +201,9 @@ where
             let mut vec = vec![0u8; len];
             decoder.reader().read(&mut vec)?;
             // Safety: Vec<T> is Vec<u8>
-            Ok(BoundVec(unsafe { core::mem::transmute(vec) }))
+            Ok(BoundVec(unsafe {
+                core::mem::transmute::<Vec<u8>, Vec<T>>(vec)
+            }))
         } else {
             let mut vec = Vec::with_capacity(len);
             for _ in 0..len {

@@ -396,9 +396,9 @@ impl PacketDecoder {
     const XOR_ENCODE_KEY: u32 = 0x7ab38cf1;
 
     fn new(xor_table_seed: Option<u32>, xor_key_idx: Option<u16>) -> Self {
-        let xor_table_seed = xor_table_seed.unwrap_or_else(|| rand::random());
+        let xor_table_seed = xor_table_seed.unwrap_or_else(rand::random);
         let xor_key_idx: u16 =
-            xor_key_idx.unwrap_or_else(|| rand::random()) & (Self::XOR_KEY_MASK as u16);
+            xor_key_idx.unwrap_or_else(rand::random) & (Self::XOR_KEY_MASK as u16);
 
         Self {
             xor_table_seed,
@@ -445,7 +445,7 @@ impl PacketDecoder {
         *dword = hdr_u32.to_le_bytes();
 
         let mut xor_key = self.get_dec_xor_key(org_dword);
-        while let Some(dword) = data_u32.next() {
+        for dword in data_u32 {
             let org_dword = u32::from_le_bytes(*dword);
             Self::store_u32(dword, org_dword ^ xor_key);
             xor_key = self.get_dec_xor_key(org_dword);
@@ -454,7 +454,7 @@ impl PacketDecoder {
         // cant use [`ChunkExactMut::into_remainder()`] since we used .map()
         let remainder = &mut data[data_len / 4 * 4..];
         let mut dword = [0u8; 4];
-        (&mut dword[..remainder.len()]).copy_from_slice(remainder);
+        dword[..remainder.len()].copy_from_slice(remainder);
         let org_dword = u32::from_le_bytes(dword);
         let dword_u32 = org_dword ^ xor_key;
         remainder.copy_from_slice(&dword_u32.to_le_bytes()[..remainder.len()]);
@@ -486,7 +486,7 @@ impl PacketDecoder {
         Self::store_u32(dword, xored_dword);
 
         let mut xor_key = self.get_enc_xor_key(xored_dword);
-        while let Some(dword) = data_u32.next() {
+        for dword in data_u32 {
             let xored_dword = u32::from_le_bytes(*dword) ^ xor_key;
             Self::store_u32(dword, xored_dword);
             xor_key = self.get_enc_xor_key(xored_dword);
@@ -495,7 +495,7 @@ impl PacketDecoder {
         // cant use [`ChunkExactMut::into_remainder()`] since we used .map()
         let remainder = &mut data[data_len / 4 * 4..];
         let mut dword = [0u8; 4];
-        (&mut dword[..remainder.len()]).copy_from_slice(remainder);
+        dword[..remainder.len()].copy_from_slice(remainder);
         let org_dword = u32::from_le_bytes(dword);
         let dword_u32 = org_dword ^ xor_key;
         remainder.copy_from_slice(&dword_u32.to_le_bytes()[..remainder.len()]);

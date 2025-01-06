@@ -139,7 +139,7 @@ impl GmsHandler {
                         Some(user_conn.auth_key)
                     })
                     .await;
-                if !user_auth_key.is_some_and(|user_auth_key| user_auth_key == auth_key) {
+                if user_auth_key.is_none_or(|user_auth_key| user_auth_key != auth_key) {
                     warn!("{self}: Can't verify user connection #{user_idx}");
                 }
 

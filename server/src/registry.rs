@@ -83,7 +83,7 @@ macro_rules! impl_borrowable {
     ($handler:ty, RefData = $borrow_ref_type:ty, borrow_ref = $(. $borrow_ref_name:ident)+) => {
         impl $crate::registry::Borrowable for $handler {
             type RefData = $borrow_ref_type;
-            fn borrow_ref(&self) -> &::std::sync::Arc<crate::registry::BorrowRef<Self, Self::RefData>> {
+            fn borrow_ref(&self) -> &::std::sync::Arc<$crate::registry::BorrowRef<Self, Self::RefData>> {
                 &self $(. $borrow_ref_name)+
             }
         }

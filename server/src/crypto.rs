@@ -66,7 +66,7 @@ impl Listener {
                     conn_ref,
                     shortkey: OnceCell::new(),
                 };
-                let id = conn.stream.other_id.clone();
+                let id = conn.stream.other_id;
 
                 info!("Listener: {id} connected");
                 if let Err(err) = conn.handle().await {

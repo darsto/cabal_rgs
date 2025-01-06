@@ -83,6 +83,7 @@ impl State {
         Some(party)
     }
 
+    #[allow(dead_code)]
     pub fn get_party(&mut self, party_id: u32) -> Option<&mut Party> {
         self.parties.get_mut(party_id)
     }
@@ -97,6 +98,7 @@ impl State {
     }
 
     // Can happen due to timeout after being offline for too long
+    #[allow(dead_code)]
     pub fn remove_character(&mut self, char_id: u32) -> Option<(u32, PartyState)> {
         let char = self.chars.remove(&char_id)?;
         let party_id = char.party?;

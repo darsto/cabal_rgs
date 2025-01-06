@@ -90,8 +90,7 @@ pub fn parse_from(args: &[String]) -> Config {
     let mut common_cfg: Option<CommonConfig> = None;
 
     let mut cur_service_start_idx: Option<usize> = None;
-    let mut iter = args.iter().enumerate();
-    while let Some((idx, arg)) = iter.next() {
+    for (idx, arg) in args.iter().enumerate() {
         if arg == "-s" || arg == "--service" {
             if let Some(cur_service_start_idx) = cur_service_start_idx {
                 // end collecting the args of the previous service and try to parse them

@@ -25,7 +25,7 @@ impl<T> ArcSlab<T> {
     pub fn with_capacity(capacity: usize) -> Self {
         assert!(capacity <= u16::MAX as usize + 1);
         let mut vec = Vec::with_capacity(capacity);
-        vec.resize_with(capacity as usize, AtomicPtr::default);
+        vec.resize_with(capacity, AtomicPtr::default);
 
         let free_indices = ArrayQueue::new(capacity);
         for i in 0..capacity {

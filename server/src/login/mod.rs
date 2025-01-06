@@ -208,9 +208,11 @@ impl Listener {
 
     pub async fn set_authenticated_connection_idx(&self, user_id: u32, conn_idx: u16) {
         println!("setting {conn_idx} as authenticated connection for user {user_id}");
-        let mut authenticated_connections = self.authenticated_connections.lock().unwrap();
-        let prev_conn_idx = authenticated_connections.insert(user_id, conn_idx);
-        drop(authenticated_connections);
+        let prev_conn_idx = self
+            .authenticated_connections
+            .lock()
+            .unwrap()
+            .insert(user_id, conn_idx);
         if let Some(prev_conn_idx) = prev_conn_idx {
             println!("terminating previous connection {prev_conn_idx} for user {user_id}");
             let prev_conn_ref = self.connections.refs.get(prev_conn_idx);

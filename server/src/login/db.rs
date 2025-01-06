@@ -20,7 +20,7 @@ use crate::{
 use super::Listener;
 
 pub struct GlobalDbHandler {
-    pub listener: Arc<Listener>,
+    pub _listener: Arc<Listener>,
     pub stream: IPCPacketStream<Async<TcpStream>>,
     pub conn_ref: Arc<BorrowRef<Self, ()>>,
 }
@@ -37,7 +37,7 @@ impl GlobalDbHandler {
         conn_ref: Arc<BorrowRef<Self, ()>>,
     ) -> Self {
         Self {
-            listener,
+            _listener: listener,
             stream,
             conn_ref,
         }

@@ -18,7 +18,7 @@ use crate::{
 };
 
 pub struct GlobalChatHandler {
-    pub listener: Arc<Listener>,
+    pub _listener: Arc<Listener>,
     pub stream: IPCPacketStream<Async<TcpStream>>,
     pub conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
 }
@@ -35,7 +35,7 @@ impl GlobalChatHandler {
         conn_ref: Arc<BorrowRef<Self, pkt_common::Connect>>,
     ) -> Self {
         Self {
-            listener,
+            _listener: listener,
             stream,
             conn_ref,
         }
@@ -79,6 +79,6 @@ impl GlobalChatHandler {
 
 impl std::fmt::Display for GlobalChatHandler {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self)
+        write!(f, "GlobalChatHandler")
     }
 }

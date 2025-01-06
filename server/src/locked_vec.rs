@@ -63,3 +63,9 @@ impl<T> LockedVec<T> {
         self.inner.read().unwrap().first().cloned()
     }
 }
+
+impl<T> Default for LockedVec<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}

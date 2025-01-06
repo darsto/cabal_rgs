@@ -18,7 +18,7 @@ use crate::{packet_stream::IPCPacketStream, registry::Borrowable};
 use super::Listener;
 
 pub struct GlobalDbHandler {
-    pub listener: Arc<Listener>,
+    pub _listener: Arc<Listener>,
     pub stream: IPCPacketStream<Async<TcpStream>>,
     pub conn_ref: Arc<BorrowRef<Self, ()>>,
     pub dung_inst_cnt: Option<pkt_global::AdditionalDungeonInstanceCount>,
@@ -36,7 +36,7 @@ impl GlobalDbHandler {
         conn_ref: Arc<BorrowRef<Self, ()>>,
     ) -> Self {
         Self {
-            listener,
+            _listener: listener,
             stream,
             conn_ref,
             dung_inst_cnt: Some(pkt_global::AdditionalDungeonInstanceCount { unk1: 1, unk2: 0 }),
