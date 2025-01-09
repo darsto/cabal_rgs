@@ -115,8 +115,9 @@ pub struct PartyMap {
 
 impl PartyMap {
     fn new() -> Self {
-        let party_avail_indices = ArrayQueue::new(1 + u16::MAX as usize);
-        for i in 0..u16::MAX {
+        // WorldSvr is glitchy with party ID 0
+        let party_avail_indices = ArrayQueue::new(u16::MAX as usize);
+        for i in 1..=u16::MAX {
             let _ = party_avail_indices.push(i);
         }
 
