@@ -13,6 +13,8 @@ use pkt_common::ServiceID;
 use pkt_party::*;
 use state::{PartyState, State};
 
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::net::TcpStream;
 use std::sync::Weak;
@@ -43,8 +45,8 @@ pub struct Listener {
 struct Server {
     id: u8,
     state: State,
-    /// Indices inside [`Listener::worlds`]
-    worlds: Vec<u16>,
+    /// Indices inside [`Listener::worlds`], indexed by channel id
+    worlds: HashMap<u8, u16>,
 }
 
 static CHARACTER_OFFLINE_KICK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
@@ -122,32 +124,27 @@ impl Listener {
                 servers.push(Server {
                     id: server,
                     state: State::new(),
-                    worlds: Vec::new(),
+                    worlds: HashMap::new(),
                 });
                 idx
             }
         };
-        if servers[server_idx].worlds.contains(&conn_ref.idx) {
-            bail!("Duplicate WorldSvr connection. Server {server}, channel {channel}");
+        match servers[server_idx].worlds.entry(channel) {
+            Entry::Vacant(e) => {
+                e.insert(conn_ref.idx);
+            }
+            Entry::Occupied(_) => {
+                bail!("Duplicate WorldSvr connection. Server {server}, channel {channel}");
+            }
         }
-        servers[server_idx].worlds.push(conn_ref.idx);
         Ok(())
     }
 
-    fn unregister_world(
-        &self,
-        server: u8,
-        _channel: u8,
-        conn_ref: &BorrowRef<WorldConnection, ()>,
-    ) {
+    fn unregister_world(&self, server: u8, channel: u8, conn_ref: &BorrowRef<WorldConnection, ()>) {
         let mut servers = self.servers.lock_write();
         let server_idx = servers.iter().position(|s| s.id == server).unwrap();
-        let world_idx = servers[server_idx]
-            .worlds
-            .iter()
-            .position(|idx| *idx == conn_ref.idx)
-            .unwrap();
-        servers[server_idx].worlds.remove(world_idx);
+        let removed_conn_ref_idx = servers[server_idx].worlds.remove(&channel).unwrap();
+        assert_eq!(removed_conn_ref_idx, conn_ref.idx);
         self.worlds.unregister(conn_ref);
     }
 
