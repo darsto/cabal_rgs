@@ -83,7 +83,7 @@ assert_def_packet_size!(PartyInviteResult, 37);
 #[packet(0xbbe)]
 pub struct PartyInviteResultAck {
     invitee_id: u32, // 0x18
-    accepted: u8,    // 1 accept, 0 reject
+    invitee_channel_id: u8,    // 0 on reject
     unk1: u8,        // ?? 0 accept, 1 on reject
 }
 
@@ -104,7 +104,7 @@ pub struct PartyCharacterStat {
     id: u32, // ??
     level: u32,
     unk8: u32,  // 0
-    unk9: u8,   // 1
+    channel_id: u8,   // 1
     class: u8,  // 3, 6, class?
     unk11: u32, // 1
     name_len: u8,
@@ -120,17 +120,23 @@ pub struct PartyMemeberAdd {
 
 #[packet(0xbc1)]
 pub struct PartyInviteCancel {
-    unk: BoundVec<0, u8>,
+    invitee_id: u32,
+    invitee_channel_id: u8,
+    inviter_id: u32,
+    inviter_channel_id: u8,
 }
 
 #[packet(0xbc2)]
 pub struct PartyInviteCancelAck {
-    unk: BoundVec<0, u8>,
+    inviter_id: u32,
+    unk1: u32,
 }
 
 #[packet(0xbc3)]
 pub struct PartyInviteLeaveOtherType {
-    unk: BoundVec<0, u8>,
+    char_id: u32,
+    party_id: u32,
+    unk1: u8, // 1 - leave type?
 }
 
 #[packet(0xbc4)]
@@ -148,37 +154,37 @@ pub struct PartyLeaveAck {
 
 #[packet(0xbc6)]
 pub struct PartyKickout {
-    p1_id: u32,
+    kicker_char_id: u32,
     party_id: u32, // 1
-    p2_id: u32,
+    kicked_char_id: u32,
 }
-// ^ response: same pkt + 0xbd3
+// ^ response: same pkt + 0xbd3 + at last 0xbc7
 
 #[packet(0xbc7)]
 pub struct PartyKickoutAck {
-    p1_id: u32,
+    kicker_char_id: u32,
     party_id: u32, // 1
 }
 
 #[packet(0xbc8)]
 pub struct PartyLeaderChange {
-    p1_id: u32,
-    unk1: u32, // 0, 1
-    p2_id: u32,
+    old_leader_id: u32,
+    party_id: u32, // 0 in received packet
+    new_leader_id: u32,
 }
 // ^ response: same pkt + 0xbc9
 
 #[packet(0xbc9)]
 pub struct PartyLeaderChangeAck {
-    p1_id: u32,
-    unk1: u32, // 0
+    old_leader_id: u32,
+    unk1: u32, // 1?
 }
 
 #[packet(0xbca)]
 pub struct PartyAuthChange {
-    p1_id: u32,
-    unk1: u32, // 1
-    unk2: u32, // 1
+    leader_id: u32,
+    party_id: u32, // 0 in received packet
+    invite_leader_only: u32, // 0 -> anyone can invite, 1 -> leader only
 }
 // ^ response: same pkt + 0xbcb
 
@@ -190,24 +196,24 @@ pub struct PartyAuthChangeAck {
 
 #[packet(0xbcc)]
 pub struct PartyLootingChange {
-    p1_id: u32,
-    unk1: u32, // 1
-    unk2: u32, // 3
-    unk3: u32, // 1, 2
+    leader_id: u32,
+    party_id: u32, // 1, 4 -> party id?
+    looting_type: u32, // 1 -> free looting, 2 -> turns, 3 -> leader only
+    bound_item_looting_type: u32, // 1 -> dice rolling, 2 -> no dice rolling
 }
 // ^ response: same pkt + 0xbcd
 
 #[packet(0xbcd)]
 pub struct PartyLootingChangeAck {
-    p1_id: u32,
+    leader_id: u32,
     unk1: u32, // 1
 }
 
 #[packet(0xbcf)]
 pub struct ClientDisconnect {
     char_id: u32,
-    unk1: u32,
-    unk2: u32,
+    party_id: u32, // 0 in received packet
+    unk2: u32, // 0
 }
 
 #[packet(0xbd1)]
@@ -217,7 +223,12 @@ pub struct PartyMemberDungeonCheck {
 
 #[packet(0xbd2)]
 pub struct PartyMessage {
-    unk: BoundVec<0, u8>,
+    player_id: u32,
+    party_id: u32,
+    remaining_bytes: u16,
+    msg_num_bytes: u16, // remaining_bytes - 5?
+    msg_unk1: [u8; 3], // 0xfe 0xfe 0xa0
+    msg_bytes: BoundVec<0, u8>, // usually followed by three 0 bytes
 }
 
 #[packet(0xbd3)]
@@ -240,6 +251,25 @@ pub struct PartySearchRegist {
     unk: BoundVec<0, u8>,
 }
 
+#[packet]
+pub struct PartySearchRegistReq {
+    leader_id: u32,
+    leader_level: u32,
+    unk1: u8, // 2 - channel id? player cnt?
+    unk2: u8, // 2 - ^
+    leader_name_len: u8,
+    leader_name: [u8; 16],
+    max_party_size: u8, // 4
+    promo_msg: [u8; 32],
+    unk4: [u8; 8], // zeroes
+}
+
+#[packet]
+pub struct PartySearchRegistResp {
+    leader_id: u32,
+    unk1: u8, // 0
+}
+
 #[packet(0xbd9)]
 pub struct PartySearchRegistCancel {
     unk: BoundVec<0, u8>,
@@ -247,7 +277,32 @@ pub struct PartySearchRegistCancel {
 
 #[packet(0xbda)]
 pub struct PartySearchList {
-    unk: BoundVec<0, u8>,
+    bytes: BoundVec<0, u8>,
+}
+
+#[packet]
+pub struct PartySearchListReq {
+    char_id: u32,
+}
+
+#[packet]
+pub struct PartySearchListResp {
+    char_id: u32,
+    parties: BoundVec<4, PartySearchListParty>,
+}
+
+#[packet]
+pub struct PartySearchListParty {
+    leader_id: u32,
+    leader_level: u32,
+    unk1: u8, // 2 - channel id? player cnt?
+    unk2: u8, // 2 - ^
+    leader_name_len: u8,
+    leader_name: [u8; 16],
+    max_party_size: u8, // 4
+    promo_msg: [u8; 32],
+    unk4: [u8; 8], // zeroes
+    party_size: u32, // 3
 }
 
 #[packet(0xbdb)]
@@ -262,7 +317,8 @@ pub struct PartySearchRegistAutoCancel {
 
 #[packet(0xbdd)]
 pub struct PartySearchRegistStats {
-    unk: BoundVec<0, u8>,
+    party_id: u32,
+    unk1: u32, // 1
 }
 
 #[packet(0xbe8)]

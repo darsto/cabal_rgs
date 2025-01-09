@@ -6,7 +6,7 @@ use crate::locked_vec::LockedVec;
 use crate::packet_stream::{IPCPacketStream, Service};
 use crate::registry::{BorrowRef, BorrowRegistry};
 use clap::Args;
-use futures::StreamExt;
+use futures::{StreamExt, TryFutureExt};
 use log::{error, info};
 use packet::*;
 use pkt_common::ServiceID;
@@ -49,7 +49,7 @@ struct Server {
     worlds: HashMap<u8, u16>,
 }
 
-static CHARACTER_OFFLINE_KICK_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+static CHARACTER_OFFLINE_KICK_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 impl Listener {
     pub fn new(tcp_listener: Async<TcpListener>, args: &Arc<crate::args::Config>) -> Arc<Self> {
@@ -155,18 +155,94 @@ impl Listener {
             loop {
                 interval_10s.next().await;
                 let now = Instant::now();
-                let mut to_remove = Vec::with_capacity(8);
 
-                let mut servers = listener.servers.lock_write();
-                for server in servers.iter_mut() {
-                    for char in server.state.iter_characters() {
-                        if char.timeout_date.is_some_and(|d| d >= now) {
-                            to_remove.push((server.id, char.data.char_id));
-                        }
-                    }
+                enum Action {
+                    Kick { char_id: u32, party_id: u32 },
+                    Disband { party_id: u32 },
                 }
 
-                // TODO process to_remove, send messages to appropriate WorldSvrs
+                let actions: Vec<(u16, Action)> = listener
+                    .servers
+                    .lock_write()
+                    .iter_mut()
+                    .flat_map(|server| {
+                        let mut chars_to_remove = Vec::new();
+                        for char in server.state.iter_characters() {
+                            if char.timeout_date.is_some_and(|d| d >= now) {
+                                chars_to_remove.push(char.data.char_id);
+                            }
+                        }
+
+                        chars_to_remove.into_iter().flat_map(|char_id| {
+                            let Some((party_id, action)) = server.state.remove_character(char_id)
+                            else {
+                                return vec![];
+                            };
+
+                            match action {
+                                PartyState::Disbanded { last_player_idx } => {
+                                    let last_player_idx = last_player_idx.unwrap();
+                                    let last_player_world_id = server
+                                        .state
+                                        .get_character(last_player_idx)
+                                        .and_then(|last_player| {
+                                            last_player.channel.and_then(|channel| {
+                                                server.worlds.get(&channel).cloned()
+                                            })
+                                        });
+                                    server.state.remove_from_party(last_player_idx);
+                                    if let Some(last_player_world_id) = last_player_world_id {
+                                        vec![(last_player_world_id, Action::Disband { party_id })]
+                                    } else {
+                                        vec![]
+                                    }
+                                }
+                                PartyState::Normal => {
+                                    let party_chars =
+                                        server.state.get_party(party_id).unwrap().players.clone();
+                                    let world_ids = party_chars.into_iter().filter_map(|char_id| {
+                                        let channel_id =
+                                            server.state.get_character(char_id).unwrap().channel?;
+                                        server.worlds.get(&channel_id)
+                                    });
+                                    world_ids
+                                        .map(|world_id| {
+                                            (*world_id, Action::Kick { char_id, party_id })
+                                        })
+                                        .collect()
+                                }
+                            }
+                        })
+                    })
+                    .collect();
+
+                for (world_id, action) in actions {
+                    let Some(world) = listener.worlds.refs.get(world_id) else {
+                        continue;
+                    };
+
+                    let _ = world
+                        .borrow()
+                        .and_then(|mut world| async move {
+                            match action {
+                                Action::Kick { char_id, party_id } => {
+                                    let _ = world
+                                        .stream
+                                        .send(&PartyInviteLeaveOtherType {
+                                            char_id,
+                                            party_id,
+                                            unk1: 1,
+                                        })
+                                        .await;
+                                }
+                                Action::Disband { party_id } => {
+                                    let _ = world.stream.send(&PartyClear { party_id }).await;
+                                }
+                            }
+                            Ok(())
+                        })
+                        .await;
+                }
             }
         })
         .detach();
@@ -282,7 +358,7 @@ impl WorldConnection {
                                                     id: p.data.char_id,
                                                     level: p.data.level,
                                                     unk8: 0,
-                                                    unk9: 1,
+                                                    channel_id: p.channel.unwrap_or(0),
                                                     class: p.data.class,
                                                     unk11: 1,
                                                     name_len: p.data.name_len,
@@ -303,7 +379,7 @@ impl WorldConnection {
                     self.stream
                         .send(&PartyInviteResultAck {
                             invitee_id: p.invitee_id,
-                            accepted: if accepted { 1 } else { 0 },
+                            invitee_channel_id: if accepted { p.invitee_channel_id } else { 0 },
                             unk1: if accepted { 0 } else { 1 },
                         })
                         .await?;

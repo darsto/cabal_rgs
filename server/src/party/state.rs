@@ -46,6 +46,7 @@ impl State {
             Entry::Occupied(mut e) => {
                 let char = e.get_mut();
                 char.channel = Some(channel);
+                char.timeout_date = None;
                 char.data = data;
             }
         }
@@ -98,7 +99,6 @@ impl State {
     }
 
     // Can happen due to timeout after being offline for too long
-    #[allow(dead_code)]
     pub fn remove_character(&mut self, char_id: u32) -> Option<(u32, PartyState)> {
         let char = self.chars.remove(&char_id)?;
         let party_id = char.party?;
