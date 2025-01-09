@@ -2,7 +2,7 @@
 // Copyright(c) 2023 Darek Stojaczyk
 
 use futures::{AsyncRead, AsyncWrite};
-use log::{debug, trace};
+use log::{debug, error, trace};
 use packet::*;
 
 use anyhow::{anyhow, bail, Result};
@@ -37,6 +37,18 @@ pub struct StreamConfig {
     pub decode_rx: bool,
 }
 
+#[derive(Debug, Error)]
+pub enum RecvError {
+    #[error("Connection terminated")]
+    Terminated,
+    #[error("Malformed data: {0}")]
+    Malformed(#[from] HeaderDeserializeError),
+    #[error("Deserialize: {0}")]
+    Deserialize(#[from] PayloadDeserializeError),
+    #[error("Decode: {0}")]
+    Decode(#[from] PacketDecodeError),
+}
+
 impl<T: Unpin> PacketStream<T> {
     pub fn new(stream: T, config: StreamConfig) -> Self {
         let decoder = match config.decode_rx {
@@ -58,7 +70,7 @@ impl<T: Unpin> PacketStream<T> {
 impl<T: Unpin + AsyncRead> PacketStream<T> {
     /// Try to receive a packet from the stream.
     /// This is cancellation-safe.
-    pub async fn recv(&mut self) -> Result<Packet> {
+    pub async fn recv(&mut self) -> std::result::Result<Packet, RecvError> {
         let pkt_len = if let Some(pkt_len) = &self.recv_pkt_len {
             *pkt_len
         } else {
@@ -71,7 +83,7 @@ impl<T: Unpin + AsyncRead> PacketStream<T> {
                 .recv_buf
                 .fill_buf_mut(buf_len, &mut self.stream)
                 .await
-                .map_err(|_| anyhow!("Connection terminated"))?;
+                .map_err(|_| RecvError::Terminated)?;
 
             let pkt_len = if let Some(decoder) = &mut self.decoder {
                 match decoder.decode(&mut hdr_buf[..4])? {
@@ -89,25 +101,26 @@ impl<T: Unpin + AsyncRead> PacketStream<T> {
             .recv_buf
             .fill_buf_mut(pkt_len as _, &mut self.stream)
             .await
-            .map_err(|e| anyhow!("Connection terminated: {e:?}"))?;
+            .map_err(|_| RecvError::Terminated)?;
 
         if let Some(decoder) = &mut self.decoder {
-            match decoder.decode(pkt_buf) {
-                Ok(PacketDecodeResult::Done(len)) => {
+            match decoder.decode(pkt_buf)? {
+                PacketDecodeResult::Done(len) => {
                     debug_assert_eq!(len, pkt_len);
                 }
-                Err(e) => {
-                    bail!("Connection terminated: {e:?}");
-                }
-                Ok(_) => unreachable!(),
+                _ => unreachable!(),
             }
         }
 
         let hdr_len = Header::num_bytes(self.config.deserialize_checksum);
         let hdr = Header::deserialize(&pkt_buf[..hdr_len], self.config.deserialize_checksum)?;
         let payload_buf = &pkt_buf[hdr_len..];
-        let p = Packet::deserialize_no_hdr(hdr.id, payload_buf)
-            .map_err(|e| anyhow!("Can't decode packet {hdr:x?}: {e}\nPayload: {payload_buf:x?}"));
+        let p = Packet::deserialize_no_hdr(hdr.id, payload_buf);
+        if let Err(e) = &p {
+            error!("{self_name}<-{other_name}: Can't decode packet {hdr:x?}: {e}\nPayload: {payload_buf:x?}",
+                self_name = self.config.self_name,
+                other_name = self.config.other_name);
+        }
 
         self.recv_pkt_len = None;
         self.recv_buf.consume(pkt_len as _);
@@ -223,7 +236,7 @@ impl<T: Unpin + AsyncWrite> IPCPacketStream<T> {
 }
 
 impl<T: Unpin + AsyncRead> IPCPacketStream<T> {
-    pub async fn recv(&mut self) -> Result<Packet> {
+    pub async fn recv(&mut self) -> std::result::Result<Packet, RecvError> {
         self.inner.recv().await
     }
 }

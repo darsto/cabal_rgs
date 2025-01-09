@@ -28,6 +28,7 @@ use smol::Async;
 use smol::Timer;
 
 use crate::packet_stream::PacketStream;
+use crate::packet_stream::RecvError;
 use crate::registry::BorrowRef;
 use crate::registry::Borrowable;
 
@@ -136,9 +137,15 @@ impl UserConnHandler {
 
                 select! {
                     p = self.stream.recv().fuse() => {
-                        let p = p.map_err(|e| {
-                            anyhow!("{self}: Failed to recv a packet: {e}")
-                        })?;
+                        let p = match p {
+                            Ok(p) => p,
+                            Err(RecvError::Terminated) => {
+                                return Ok(());
+                            }
+                            Err(e) => {
+                                bail!("{self}: Failed to recv a packet: {e}")
+                            }
+                        };
                         break p
                     }
                     _ = self.conn_ref.borrower.wait_to_lend().fuse() => {
@@ -556,9 +563,15 @@ impl UserConnHandler {
 
             select! {
                 p = self.stream.recv().fuse() => {
-                    let p = p.map_err(|e| {
-                        anyhow!("{self}: Failed to recv a packet: {e}")
-                    })?;
+                    let p = match p {
+                        Ok(p) => p,
+                        Err(RecvError::Terminated) => {
+                            return Ok(());
+                        }
+                        Err(e) => {
+                            bail!("{self}: Failed to recv a packet: {e}")
+                        }
+                    };
                     match p {
                         Packet::C2SCheckVersion(p) => {
                             self.handle_check_version(p).await?;
