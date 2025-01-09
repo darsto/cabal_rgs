@@ -110,16 +110,16 @@ impl GmsHandler {
                 let gms_response_hdr = DuplexRouteHeader {
                     route_hdr: RouteHeader {
                         origin_main_cmd: VerifyLinksResult::ID,
-                        channel_id: p.droute_hdr.resp_channel_id,
                         server_id: p.droute_hdr.resp_server_id,
+                        channel_id: p.droute_hdr.resp_channel_id,
                         world_id: 0xf, // ?? p.droute_hdr.resp_world_id
                         process_id: p.resp_process_id,
                     },
                     unique_idx: p.droute_hdr.unique_idx,
                     to_idx: p.droute_hdr.fm_idx,
                     fm_idx: p.droute_hdr.to_idx,
-                    resp_channel_id: p.droute_hdr.route_hdr.channel_id,
                     resp_server_id: p.droute_hdr.route_hdr.server_id,
+                    resp_channel_id: p.droute_hdr.route_hdr.channel_id,
                     resp_world_id: 0xc, // ?? p.droute_hdr.route_hdr.world_id,
                 };
 
