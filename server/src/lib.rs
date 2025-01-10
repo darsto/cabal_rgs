@@ -38,15 +38,32 @@ pub fn setup_log(is_test: bool) {
 }
 
 pub mod executor {
+    use async_executor::StaticLocalExecutor;
     use futures::Future;
-    use smol::{LocalExecutor, Task};
+    use smol::Task;
 
     thread_local! {
-        static ASYNC_EX: LocalExecutor<'static> = const { LocalExecutor::new() };
+        static ASYNC_EX: StaticLocalExecutor = const { StaticLocalExecutor ::new() };
     }
 
     pub fn spawn_local<F: Future<Output = T> + 'static, T: 'static>(future: F) -> Task<T> {
-        ASYNC_EX.with(|ex| ex.spawn(future))
+        // See https://github.com/smol-rs/async-executor/issues/119
+        // SAFETY: The 'static requirement for &StaticLocalExecutor seems pointless
+        let ex: &'static StaticLocalExecutor =
+            ASYNC_EX.with(|ex| unsafe { std::mem::transmute(ex) });
+        ex.spawn(future)
+    }
+
+    /// ## Safety
+    ///
+    /// The caller must ensure that the returned task terminates
+    /// or is cancelled before invalidating any captured data
+    pub unsafe fn spawn_local_scoped<F: Future<Output = T>, T>(future: F) -> Task<T> {
+        // See https://github.com/smol-rs/async-executor/issues/119
+        // SAFETY: The 'static requirement for &StaticLocalExecutor seems pointless
+        let ex: &'static StaticLocalExecutor =
+            ASYNC_EX.with(|ex| unsafe { std::mem::transmute(ex) });
+        ex.spawn_scoped(future)
     }
 
     pub fn run_until<F: Future<Output = T> + 'static, T: 'static + Send>(future: F) -> T {

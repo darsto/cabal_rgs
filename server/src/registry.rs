@@ -6,7 +6,7 @@ use futures::FutureExt;
 
 use std::sync::Arc;
 
-use crate::arc_slab::ArcSlab;
+use crate::{arc_slab::ArcSlab, executor};
 
 pub struct BorrowRegistry<T, R> {
     pub refs: ArcSlab<BorrowRef<T, R>>,
@@ -45,7 +45,7 @@ pub trait Borrowable: Send + std::fmt::Display {
     where
         Self: Sized;
 
-    fn lend_self(&mut self) -> impl std::future::Future<Output = ()>
+    fn lend_self(&mut self) -> impl std::future::Future<Output = ()> + '_
     where
         Self: Sized,
     {
@@ -54,19 +54,23 @@ pub trait Borrowable: Send + std::fmt::Display {
         }
     }
 
-    fn lend_self_until<T>(
-        &mut self,
-        future: impl futures::Future<Output = T>,
-    ) -> impl std::future::Future<Output = T>
+    fn lend_self_until<'a, T>(
+        &'a mut self,
+        future: impl futures::Future<Output = T> + 'a,
+    ) -> impl std::future::Future<Output = T> + 'a
     where
+        T: 'a,
         Self: Sized,
     {
-        async {
+        // SAFETY: The Future we return has same lifetime as `future`
+        let task = unsafe { executor::spawn_local_scoped(future) };
+
+        async move {
             let conn_ref = self.borrow_ref().clone();
-            let mut future = core::pin::pin!(future.fuse());
+            let mut task = core::pin::pin!(task.fuse());
             loop {
                 async_proc::select! {
-                    ret = future => {
+                    ret = task => {
                         return ret;
                     }
                     _ = conn_ref.borrower.wait_to_lend().fuse() => {

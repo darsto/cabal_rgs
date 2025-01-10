@@ -18,6 +18,13 @@ assert_def_packet_size!(ConnectAck, 20);
 
 #[packet(0xbce)]
 pub struct ClientConnect {
+    bytes: BoundVec<0, u8>,
+}
+// ^ response: first u32, then zeroes for a total pkt len 411
+//assert_def_packet_size!(ClientConnect, 31);
+
+#[packet(0xbce)]
+pub struct ClientConnectReq {
     char_id: u32,    // 0x18?
     channel_id: u32, // ?? 1
     unk3: u8,        // 0 maybe gender?
@@ -25,10 +32,15 @@ pub struct ClientConnect {
     level: u32, // 0xc8
     name_len: u8,
     name: [u8; 16],
-    padding: BoundVec<0, u8>, // zeroes
 }
-// ^ response: first u32, then zeroes for a total pkt len 411
-assert_def_packet_size!(ClientConnect, 31);
+
+#[packet(0xbce)]
+pub struct ClientConnectResp {
+    char_id: u32,
+    has_party: u32,
+    party_stats: PartyStats, // tgt_char_id == 0
+    bytes: BoundVec<0, u8>,
+}
 
 #[packet(0xbbb)]
 pub struct PartyInvite {
@@ -84,7 +96,7 @@ assert_def_packet_size!(PartyInviteResult, 37);
 pub struct PartyInviteResultAck {
     invitee_id: u32, // 0x18
     invitee_channel_id: u8,    // 0 on reject
-    unk1: u8,        // ?? 0 accept, 1 on reject
+    unk1: u8,        // ?? 0 accept, 1 on reject, maybe 2 on timeout reject?
 }
 
 #[packet(0xbbf)]
@@ -113,7 +125,7 @@ pub struct PartyCharacterStat {
 }
 
 #[packet(0xbc0)]
-pub struct PartyMemeberAdd {
+pub struct PartyMemberAdd {
     party_id: u32,
     char: PartyCharacterStat,
 }
@@ -129,7 +141,7 @@ pub struct PartyInviteCancel {
 #[packet(0xbc2)]
 pub struct PartyInviteCancelAck {
     inviter_id: u32,
-    unk1: u32,
+    unk1: u32, // 1
 }
 
 #[packet(0xbc3)]
@@ -238,7 +250,11 @@ pub struct PartyClear {
 
 #[packet(0xbd0)]
 pub struct PartyMemberStatsChange {
-    unk: BoundVec<0, u8>,
+    char_id: u32,
+    party_id: u32, // 1
+    unk2: u8, // 1
+    level: u32,
+    unk3: [u8; 21], // zeroes
 }
 
 #[packet(0xbd4)]

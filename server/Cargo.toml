@@ -26,6 +26,7 @@ anyhow = "1.0"
 clap = { version = "4.5", features = ["derive", "cargo", "string"] }
 num_enum = "0.7"
 smol = "2.0"
+async-executor = { version = "1.13.1", features = ["static"] }
 syn = { version = "2.0", features = ["derive", "extra-traits"] }
 thiserror = "1.0.61"
 futures = "0.3.30"

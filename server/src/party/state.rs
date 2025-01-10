@@ -4,7 +4,8 @@ use std::{
 };
 
 use crossbeam_queue::ArrayQueue;
-use packet::pkt_party::ClientConnect;
+use log::info;
+use packet::pkt_party::ClientConnectReq;
 
 pub struct State {
     chars: HashMap<u32, CharacterState>,
@@ -12,9 +13,9 @@ pub struct State {
 }
 
 pub struct CharacterState {
-    pub data: ClientConnect,
+    pub data: ClientConnectReq,
     pub channel: Option<u8>,
-    pub timeout_date: Option<Instant>,
+    pub disconnect_time: Option<Instant>,
     pub party: Option<u32>,
 }
 
@@ -33,21 +34,25 @@ impl State {
         }
     }
 
-    pub fn add_character(&mut self, channel: u8, data: ClientConnect) {
+    pub fn add_character(&mut self, channel: u8, data: ClientConnectReq) -> Option<u32> {
         match self.chars.entry(data.char_id) {
             Entry::Vacant(e) => {
+                info!("Added character {} on channel {channel}", data.char_id);
                 e.insert(CharacterState {
                     data,
                     channel: Some(channel),
-                    timeout_date: None,
+                    disconnect_time: None,
                     party: None,
                 });
+                None
             }
             Entry::Occupied(mut e) => {
+                info!("Updated character {} on channel {channel}", data.char_id);
                 let char = e.get_mut();
                 char.channel = Some(channel);
-                char.timeout_date = None;
+                char.disconnect_time = None;
                 char.data = data;
+                char.party
             }
         }
     }
@@ -61,26 +66,40 @@ impl State {
     }
 
     pub fn add_to_party(&mut self, inviter_id: u32, invitee_id: u32) -> Option<Party> {
-        let inviter = self.chars.get_mut(&inviter_id)?;
-        let party = match inviter.party {
+        info!("Creating party for {inviter_id} and {invitee_id}");
+
+        // Invitee can be already in party, and then they effectively
+        // become the inviter
+        let inviter_party_id = self.chars.get_mut(&inviter_id)?.party;
+        let invitee_party_id = self.chars.get_mut(&invitee_id)?.party;
+
+        let party = match inviter_party_id.or(invitee_party_id) {
             None => {
-                let party = self
-                    .parties
-                    .new_party(inviter.data.char_id, invitee_id)
-                    .unwrap();
-                inviter.party = Some(party.id);
+                let party = self.parties.new_party(inviter_id, invitee_id).unwrap();
+                info!("Created party {}", party.id);
                 party
             }
-            Some(party_id) => self.parties.get_mut(party_id).unwrap(),
+            Some(party_id) => {
+                let party: &mut Party = self.parties.get_mut(party_id).unwrap();
+                if !party.players.contains(&inviter_id) {
+                    // TODO hashset?
+                    party.players.push(inviter_id);
+                    info!("Added {inviter_id} to party {}", party.id);
+                }
+                if !party.players.contains(&invitee_id) {
+                    // TODO hashset?
+                    party.players.push(invitee_id);
+                    info!("Added {invitee_id} to party {}", party.id);
+                }
+                party
+            }
         };
 
         let party = party.clone();
-        let Some(invitee) = self.chars.get_mut(&invitee_id) else {
-            // need to remove the party if we have just created it
-            let _ = self.parties.remove_from_party(party.id, invitee_id);
-            return None;
-        };
+        let invitee = self.chars.get_mut(&invitee_id).unwrap();
         invitee.party = Some(party.id);
+        let inviter = self.chars.get_mut(&inviter_id).unwrap();
+        inviter.party = Some(party.id);
         Some(party)
     }
 
@@ -90,19 +109,20 @@ impl State {
     }
 
     pub fn remove_from_party(&mut self, char_id: u32) -> Option<Party> {
+        info!("Removing character {char_id} from party");
         let char = self.chars.get_mut(&char_id)?;
         let party_id = char.party?;
         char.party = None;
-        self.parties
-            .remove_from_party(party_id, char_id)
+        info!("Removed character {char_id} from party");
+        self.parties.remove_from_party(party_id, char_id)
     }
 
     // Can happen due to timeout after being offline for too long
     pub fn remove_character(&mut self, char_id: u32) -> Option<Party> {
+        info!("Removing character {char_id}");
         let char = self.chars.remove(&char_id)?;
         let party_id = char.party?;
-        self.parties
-            .remove_from_party(party_id, char_id)
+        self.parties.remove_from_party(party_id, char_id)
     }
 }
 
@@ -148,17 +168,15 @@ impl PartyMap {
                 return None;
             }
         };
-        let Some(player_idx) = entry.get_mut().players.iter().position(|id| *id == char_id) else {
-            // player removed in the meantime, but the party continues to exist
-            return Some(entry.get_mut().clone());
-        };
-        entry.get_mut().players.remove(player_idx);
+        if let Some(player_idx) = entry.get_mut().players.iter().position(|id| *id == char_id) {
+            entry.get_mut().players.remove(player_idx);
+        }
         if entry.get_mut().players.len() >= 2 {
             return Some(entry.get_mut().clone());
         }
 
         let party = entry.remove();
         self.avail_indices.push(party_id as _).unwrap();
-        return Some(party);
+        Some(party)
     }
 }
