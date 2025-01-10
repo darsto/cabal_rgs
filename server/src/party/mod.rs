@@ -4,7 +4,7 @@
 use crate::executor;
 use crate::locked_vec::LockedVec;
 use crate::packet_stream::{IPCPacketStream, Service};
-use crate::registry::{BorrowRef, BorrowRegistry};
+use crate::registry::{BorrowRef, BorrowRegistry, Borrowable};
 use clap::Args;
 use futures::{StreamExt, TryFutureExt};
 use log::{error, info};
@@ -14,7 +14,7 @@ use pkt_party::*;
 use state::{PartyState, State};
 
 use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Display;
 use std::net::TcpStream;
 use std::sync::Weak;
@@ -174,44 +174,28 @@ impl Listener {
                         }
 
                         chars_to_remove.into_iter().flat_map(|char_id| {
-                            let Some((party_id, action)) = server.state.remove_character(char_id)
-                            else {
+                            let Some(party) = server.state.remove_character(char_id) else {
                                 return vec![];
                             };
 
-                            match action {
-                                PartyState::Disbanded { last_player_idx } => {
-                                    let last_player_idx = last_player_idx.unwrap();
-                                    let last_player_world_id = server
-                                        .state
-                                        .get_character(last_player_idx)
-                                        .and_then(|last_player| {
-                                            last_player.channel.and_then(|channel| {
-                                                server.worlds.get(&channel).cloned()
-                                            })
-                                        });
-                                    server.state.remove_from_party(last_player_idx);
-                                    if let Some(last_player_world_id) = last_player_world_id {
-                                        vec![(last_player_world_id, Action::Disband { party_id })]
+                            let party_id = party.id;
+                            let world_ids = party.players.iter().filter_map(|char_id| {
+                                let channel_id =
+                                    server.state.get_character(*char_id).unwrap().channel?;
+                                server.worlds.get(&channel_id)
+                            });
+                            world_ids
+                                .flat_map(|world_id| {
+                                    if party.players.len() >= 2 {
+                                        vec![(*world_id, Action::Kick { char_id, party_id })]
                                     } else {
-                                        vec![]
+                                        vec![
+                                            (*world_id, Action::Kick { char_id, party_id }),
+                                            (*world_id, Action::Disband { party_id }),
+                                        ]
                                     }
-                                }
-                                PartyState::Normal => {
-                                    let party_chars =
-                                        server.state.get_party(party_id).unwrap().players.clone();
-                                    let world_ids = party_chars.into_iter().filter_map(|char_id| {
-                                        let channel_id =
-                                            server.state.get_character(char_id).unwrap().channel?;
-                                        server.worlds.get(&channel_id)
-                                    });
-                                    world_ids
-                                        .map(|world_id| {
-                                            (*world_id, Action::Kick { char_id, party_id })
-                                        })
-                                        .collect()
-                                }
-                            }
+                                })
+                                .collect()
                         })
                     })
                     .collect();
@@ -334,12 +318,12 @@ impl WorldConnection {
                     self.stream.send(&p).await?;
                 }
                 Packet::PartyInviteResult(p) => {
-                    let party_stats =
-                        {
-                            let server = server_guard!();
-                            if let Some(c) = server.state.get_character(p.invitee_id) {
-                                c.data.level = p.invitee_level;
-                            }
+                    let (party_stats, world_ids) = {
+                        let server = server_guard!();
+                        if let Some(c) = server.state.get_character(p.invitee_id) {
+                            c.data.level = p.invitee_level;
+                        }
+                        let stats =
                             match p.accepted {
                                 1 => server.state.add_to_party(p.inviter_id, p.invitee_id).map(
                                     |party| PartyStats {
@@ -372,8 +356,19 @@ impl WorldConnection {
                                     },
                                 ),
                                 _ => None,
-                            }
-                        };
+                            };
+
+                        let world_ids = stats
+                            .iter()
+                            .flat_map(|stats| stats.chars.iter())
+                            .flat_map(|char_stat| {
+                                let channel = char_stat.channel_id;
+                                server.worlds.get(&channel).cloned()
+                            })
+                            .collect::<HashSet<u16>>();
+
+                        (stats, world_ids)
+                    };
 
                     let accepted = party_stats.is_some();
                     self.stream
@@ -384,55 +379,100 @@ impl WorldConnection {
                         })
                         .await?;
 
-                    self.stream.send(&p).await?;
-
                     if let Some(mut party_stats) = party_stats {
-                        // notify about new char in the existing party
-                        if party_stats.chars.len() > 2 {
-                            let invitee = party_stats
-                                .chars
-                                .iter()
-                                .find(|c| c.id == p.invitee_id)
-                                .unwrap();
-                            self.stream
-                                .send(&PartyMemeberAdd {
-                                    party_id: party_stats.party_id,
-                                    char: invitee.clone(),
-                                })
-                                .await?;
-                        }
+                        let listener = self.listener.clone();
+                        self.lend_self_until(async {
+                            for world_idx in world_ids {
+                                let Some(world) = listener.worlds.refs.get(world_idx) else {
+                                    continue;
+                                };
 
-                        // send full stats to the characters new in party
-                        let new_char_ids: &[u32] = match party_stats.chars.len() {
-                            2 => &[p.inviter_id, p.invitee_id],
-                            _ => &[p.invitee_id],
-                        };
-                        for char_id in new_char_ids {
-                            party_stats.tgt_char_id = *char_id;
-                            self.stream.send(&party_stats).await?;
-                        }
+                                let Ok(mut world) = world.borrow().await else {
+                                    continue;
+                                };
+
+                                // notify about new char in the existing party
+                                if party_stats.chars.len() > 2 {
+                                    let invitee = party_stats
+                                        .chars
+                                        .iter()
+                                        .find(|c| c.id == p.invitee_id)
+                                        .unwrap();
+                                    let _ = world
+                                        .stream
+                                        .send(&PartyMemeberAdd {
+                                            party_id: party_stats.party_id,
+                                            char: invitee.clone(),
+                                        })
+                                        .await;
+                                }
+
+                                // send full stats to the characters new in party
+                                if p.invitee_channel_id == world.channel {
+                                    let new_char_ids: &[u32] = match party_stats.chars.len() {
+                                        2 => &[p.inviter_id, p.invitee_id],
+                                        _ => &[p.invitee_id],
+                                    };
+                                    for char_id in new_char_ids {
+                                        party_stats.tgt_char_id = *char_id;
+                                        let _ = world.stream.send(&party_stats).await;
+                                    }
+                                }
+                            }
+                        })
+                        .await;
                     }
                 }
                 Packet::PartyLeave(p) => {
-                    let result = server_guard!().state.remove_from_party(p.char_id);
-                    self.stream.send(&p).await?;
+                    let (party, world_ids) = {
+                        let server = server_guard!();
+                        let Some(party) = server.state.remove_from_party(p.char_id) else {
+                            drop(server);
+                            self.stream.send(&p).await?;
+                            continue;
+                        };
+                        let world_ids = party
+                            .players
+                            .iter()
+                            .flat_map(|char_id| {
+                                let char = server.state.get_character(*char_id)?;
+                                let channel = char.channel?;
+                                server.worlds.get(&channel).cloned()
+                            })
+                            .collect::<HashSet<u16>>();
 
-                    match result {
-                        Some((removed_party_id, PartyState::Disbanded { last_player_idx }))
-                            if removed_party_id == p.party_id =>
-                        {
-                            if let Some(last_player_idx) = last_player_idx {
-                                server_guard!().state.remove_from_party(last_player_idx);
-                            }
-
-                            self.stream
-                                .send(&PartyClear {
-                                    party_id: p.party_id,
-                                })
-                                .await?;
+                        if party.players.len() == 1 {
+                            let last_player_idx = party.players[0];
+                            server.state.remove_from_party(last_player_idx);
                         }
-                        _ => {}
-                    }
+
+                        (party, world_ids)
+                    };
+
+                    let listener = self.listener.clone();
+                    self.lend_self_until(async {
+                        for world_idx in world_ids {
+                            let Some(world) = listener.worlds.refs.get(world_idx) else {
+                                continue;
+                            };
+
+                            let Ok(mut world) = world.borrow().await else {
+                                continue;
+                            };
+
+                            if party.players.len() < 2 {
+                                let _ = world
+                                    .stream
+                                    .send(&PartyClear {
+                                        party_id: p.party_id,
+                                    })
+                                    .await;
+                            } else {
+                                let _ = world.stream.send(&p).await;
+                            }
+                        }
+                    })
+                    .await;
 
                     self.stream
                         .send(&PartyLeaveAck {
@@ -441,11 +481,54 @@ impl WorldConnection {
                         })
                         .await?;
                 }
-                Packet::ClientDisconnect(p) => {
-                    if let Some(char) = server_guard!().state.get_character(p.char_id) {
+                Packet::ClientDisconnect(mut p) => {
+                    let world_ids = {
+                        let server = server_guard!();
+                        let Some(char) = server.state.get_character(p.char_id) else {
+                            drop(server);
+                            let _ = self.stream.send(&p).await;
+                            continue;
+                        };
+
                         char.channel = None;
-                        char.timeout_date = Some(Instant::now() + CHARACTER_OFFLINE_KICK_TIMEOUT);
-                    }
+
+                        if let Some(party_id) = char.party {
+                            char.timeout_date =
+                                Some(Instant::now() + CHARACTER_OFFLINE_KICK_TIMEOUT);
+                            p.party_id = party_id;
+
+                            let party = server.state.get_party(party_id).cloned().unwrap();
+
+                            party
+                                .players
+                                .iter()
+                                .flat_map(|char_id| {
+                                    let char = server.state.get_character(*char_id)?;
+                                    let channel = char.channel?;
+                                    server.worlds.get(&channel).cloned()
+                                })
+                                .collect::<HashSet<u16>>()
+                        } else {
+                            // don't leave the current WorldSvr hanging no matter what
+                            HashSet::from([self.conn_ref.idx])
+                        }
+                    };
+
+                    let listener = self.listener.clone();
+                    self.lend_self_until(async {
+                        for world_idx in world_ids {
+                            let Some(world) = listener.worlds.refs.get(world_idx) else {
+                                continue;
+                            };
+
+                            let Ok(mut world) = world.borrow().await else {
+                                continue;
+                            };
+
+                            let _ = world.stream.send(&p).await;
+                        }
+                    })
+                    .await;
                 }
                 _ => {
                     //trace!("{self}: Got packet: {p:?}");

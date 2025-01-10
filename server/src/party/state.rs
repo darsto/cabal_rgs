@@ -89,22 +89,20 @@ impl State {
         self.parties.get_mut(party_id)
     }
 
-    pub fn remove_from_party(&mut self, char_id: u32) -> Option<(u32, PartyState)> {
+    pub fn remove_from_party(&mut self, char_id: u32) -> Option<Party> {
         let char = self.chars.get_mut(&char_id)?;
         let party_id = char.party?;
         char.party = None;
         self.parties
             .remove_from_party(party_id, char_id)
-            .map(|state| (party_id, state))
     }
 
     // Can happen due to timeout after being offline for too long
-    pub fn remove_character(&mut self, char_id: u32) -> Option<(u32, PartyState)> {
+    pub fn remove_character(&mut self, char_id: u32) -> Option<Party> {
         let char = self.chars.remove(&char_id)?;
         let party_id = char.party?;
         self.parties
             .remove_from_party(party_id, char_id)
-            .map(|state| (party_id, state))
     }
 }
 
@@ -141,7 +139,7 @@ impl PartyMap {
         self.parties.get_mut(&id)
     }
 
-    fn remove_from_party(&mut self, party_id: u32, char_id: u32) -> Option<PartyState> {
+    fn remove_from_party(&mut self, party_id: u32, char_id: u32) -> Option<Party> {
         let mut entry = match self.parties.entry(party_id as _) {
             Entry::Occupied(e) => e,
             Entry::Vacant(_) => {
@@ -152,21 +150,15 @@ impl PartyMap {
         };
         let Some(player_idx) = entry.get_mut().players.iter().position(|id| *id == char_id) else {
             // player removed in the meantime, but the party continues to exist
-            return Some(PartyState::Normal);
+            return Some(entry.get_mut().clone());
         };
         entry.get_mut().players.remove(player_idx);
         if entry.get_mut().players.len() >= 2 {
-            return Some(PartyState::Normal);
+            return Some(entry.get_mut().clone());
         }
 
         let party = entry.remove();
-        let last_player_idx = party.players.first().cloned();
         self.avail_indices.push(party_id as _).unwrap();
-        Some(PartyState::Disbanded { last_player_idx })
+        return Some(party);
     }
-}
-
-pub enum PartyState {
-    Normal,
-    Disbanded { last_player_idx: Option<u32> },
 }
